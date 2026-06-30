@@ -6,10 +6,22 @@ import { useStore } from './store.js'
 export default function App() {
   const profile = useStore((s) => s.profile)
   const completeOnboarding = useStore((s) => s.completeOnboarding)
+  const images = useStore((s) => s.images)
+
+  // Uploaded images (from Settings) win; otherwise the CSS classes use the
+  // public/*.jpg files; otherwise the CSS moon + clouds carry the theme.
+  const sceneImg = profile ? images?.bg : images?.hero
+  const sceneStyle = sceneImg ? { backgroundImage: `url(${sceneImg})` } : undefined
 
   return (
     <>
+      {/* Moonlit-graveyard scene. */}
+      <div
+        className={`scene-bg ${profile ? 'scene-app' : 'scene-onboard'}`}
+        style={sceneStyle}
+      />
       <div className="void-bg" />
+      <div className="clouds" aria-hidden="true" />
       <div className="fog" />
       <div className="app">
         <motion.div

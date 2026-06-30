@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Reaper from '../Reaper.jsx'
 import LifeWeeks from '../LifeWeeks.jsx'
 import { computeLife, remainingBreakdown, fmt } from '../../lib/time.js'
 import { useNow } from '../../lib/storage.js'
 import { useStore, financeTotals } from '../../store.js'
+import { toneCopy, toneStart } from '../../lib/tone.js'
 
 const QUOTES = [
   { t: 'The certainty of death and the uncertainty of its timing provides the freedom to enjoy life.', a: 'Paul Beard' },
@@ -26,6 +28,10 @@ export default function DashboardView() {
   const family = useStore((s) => s.family)
   const setView = useStore((s) => s.setView)
   const setDockOpen = useStore((s) => s.setDockOpen)
+  const images = useStore((s) => s.images)
+  const tone = useStore((s) => s.tone)
+  const t = toneCopy(tone)
+  const start = toneStart(tone)
 
   const life = computeLife(profile.dob, profile.lifeExpectancy, now)
   if (!life) return <p>Check your birth date in the profile.</p>
@@ -34,9 +40,11 @@ export default function DashboardView() {
   const quote = QUOTES[life.daysLived % QUOTES.length]
   const gone = life.msLeft <= 0
 
-  const active = goals.filter((g) => g.status === 'ACTIVE').length
-  const done = goals.filter((g) => g.status === 'COMPLETED').length
-  const goalPct = goals.length ? Math.round((done / goals.length) * 100) : 0
+  // Year-scoped (annual / 5-year) goals are excluded from the kanban-style stats.
+  const planGoals = goals.filter((g) => !g.horizon)
+  const active = planGoals.filter((g) => g.status === 'ACTIVE').length
+  const done = planGoals.filter((g) => g.status === 'COMPLETED').length
+  const goalPct = planGoals.length ? Math.round((done / planGoals.length) * 100) : 0
   const { netWorth } = financeTotals(finance)
 
   const milestones = family
@@ -45,15 +53,33 @@ export default function DashboardView() {
     .sort((a, b) => a.date.localeCompare(b.date))
   const nextMilestone = milestones.find((ms) => ms.date >= new Date().toISOString().slice(0, 10))
 
+  const isEmpty =
+    goals.length === 0 &&
+    family.length === 0 &&
+    finance.assets.length === 0 &&
+    finance.liabilities.length === 0 &&
+    (finance.retirementTarget || 0) === 0
+
   return (
     <div>
-      <motion.h2 className="greeting" variants={fade} initial="hidden" animate="show">
-        {gone ? 'The sand has run out, ' : 'The clock is running, '}
-        <span className="name">{profile.name}</span>.
-      </motion.h2>
-      <motion.p className="greeting-sub" variants={fade} custom={1} initial="hidden" animate="show">
-        You have lived {fmt(life.ageYears)} years. Here is what the reaper has left on the table.
-      </motion.p>
+      {/* Hero banner — greeting + actions on the left, the wolf reaper on the right */}
+      <motion.section className="hero" variants={fade} initial="hidden" animate="show">
+        <div className="hero-copy">
+          <h2 className="greeting">
+            {gone ? t.gone : t.running}
+            <span className="name">{profile.name}</span>.
+          </h2>
+          <p className="greeting-sub">
+            {t.sub.replace('{age}', fmt(life.ageYears))} {isEmpty ? '' : '— spend it like it is counted, because it is.'}
+          </p>
+          <div className="hero-cta">
+            <button className="btn btn-primary" onClick={() => setView('goals')}>Set a goal →</button>
+            <button className="btn btn-ghost" onClick={() => setView('family')}>Add a loved one</button>
+            <button className="btn btn-ghost" onClick={() => setView('finance')}>Map finances</button>
+          </div>
+        </div>
+        <HeroArt heroImg={images?.hero} />
+      </motion.section>
 
       <div className="grid">
         {/* Countdown hero */}
@@ -140,6 +166,32 @@ export default function DashboardView() {
           <div className="quote-author">— {quote.a}</div>
         </motion.div>
       </div>
+    </div>
+  )
+}
+
+// The big wolf figure in the hero. Prefers the user's uploaded image, then the
+// shipped default (/hero-wolf.png), then the floating SVG wolf so the default
+// design always looks complete.
+function HeroArt({ heroImg }) {
+  const [failed, setFailed] = useState(false)
+  const src = heroImg || '/hero-wolf.png'
+  if (failed && !heroImg) {
+    return (
+      <div className="hero-art hero-art-svg">
+        <Reaper size={230} />
+      </div>
+    )
+  }
+  return (
+    <div className="hero-art">
+      <img
+        className="hero-art-img"
+        src={src}
+        alt="The wolf reaper"
+        draggable={false}
+        onError={() => setFailed(true)}
+      />
     </div>
   )
 }

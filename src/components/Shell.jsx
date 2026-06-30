@@ -6,6 +6,7 @@ import FinanceView from './views/FinanceView.jsx'
 import FamilyView from './views/FamilyView.jsx'
 import LegacyView from './views/LegacyView.jsx'
 import ReflectView from './views/ReflectView.jsx'
+import SettingsView from './views/SettingsView.jsx'
 import DeathDock from './DeathDock.jsx'
 
 const NAV = [
@@ -15,6 +16,7 @@ const NAV = [
   { key: 'family', label: 'Family', glyph: '🜨' },
   { key: 'legacy', label: 'Legacy', glyph: '⚱' },
   { key: 'reflect', label: 'Reflect', glyph: '🕯' },
+  { key: 'settings', label: 'Settings', glyph: '⚙' },
 ]
 
 const VIEWS = {
@@ -24,6 +26,7 @@ const VIEWS = {
   family: FamilyView,
   legacy: LegacyView,
   reflect: ReflectView,
+  settings: SettingsView,
 }
 
 function SkullMark() {
@@ -87,11 +90,6 @@ export default function Shell() {
 
       {/* Main content */}
       <main className="main">
-        <div className="main-topbar">
-          <div className="hello">
-            Walking with <span className="name">{profile?.name}</span>
-          </div>
-        </div>
         <motion.div
           key={view}
           initial={{ opacity: 0, y: 14 }}

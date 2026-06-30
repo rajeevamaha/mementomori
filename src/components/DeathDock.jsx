@@ -89,6 +89,7 @@ export default function DeathDock() {
       goals: s.goals.map((g) => ({ id: g.id, category: g.category, title: g.title, status: g.status, priority: g.priority, targetDate: g.targetDate })),
       finance: { assets, liabilities, netWorth, retirementTarget: s.finance.retirementTarget },
       family: s.family.map((m) => ({ id: m.id, name: m.name, relation: m.relation })),
+      tone: s.tone,
     }
   }
 

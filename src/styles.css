@@ -16,7 +16,7 @@
   --spectral-dim: #3d7a5a;
   --gold: #d9b46a;
 
-  --serif: 'Cinzel', Georgia, serif;
+  --serif: 'Grenze Gotisch', 'Cinzel', Georgia, serif;
   --sans: 'Inter', system-ui, -apple-system, sans-serif;
 
   --shadow-glow: 0 0 40px rgba(230, 57, 70, 0.18);
@@ -50,17 +50,62 @@ body {
   overflow-x: hidden;
 }
 
-/* ---- Animated background fog / void ---- */
+/* ---- Photo scene background (moonlit graveyard) ----
+   Lights up when you drop images into public/. Until then it's just the void
+   color and the CSS moon/clouds below carry the theme. */
+.scene-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: var(--void);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center top;
+}
+.scene-app {
+  background-image: url('/bg-graveyard.png'); /* image #5 — pure graveyard + moon */
+  opacity: 0.9;
+}
+.scene-onboard {
+  background-image: url('/bg-graveyard.png'); /* moonlit graveyard (shared) */
+  background-position: center;
+  opacity: 0.9;
+}
+
+/* ---- Dark overlay + ambient glows (sits over the photo for legibility) ---- */
 .void-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(1200px 700px at 50% -10%, rgba(157, 28, 40, 0.16), transparent 60%),
+    radial-gradient(1200px 700px at 50% -10%, rgba(157, 28, 40, 0.14), transparent 60%),
     radial-gradient(900px 600px at 85% 110%, rgba(127, 255, 176, 0.06), transparent 55%),
-    radial-gradient(700px 700px at 10% 90%, rgba(40, 42, 60, 0.5), transparent 60%),
-    linear-gradient(180deg, var(--void) 0%, var(--void-2) 100%);
+    radial-gradient(700px 700px at 10% 90%, rgba(40, 42, 60, 0.25), transparent 60%),
+    linear-gradient(180deg, rgba(7, 7, 10, 0.34) 0%, rgba(10, 11, 16, 0.6) 100%);
   pointer-events: none;
+}
+
+/* ---- Drifting clouds (the moon comes from the graveyard photo) ---- */
+.clouds {
+  position: fixed;
+  left: -10%;
+  right: -10%;
+  top: -8%;
+  height: 60%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background:
+    radial-gradient(60% 60% at 22% 34%, rgba(30, 34, 50, 0.85), transparent 70%),
+    radial-gradient(50% 55% at 56% 20%, rgba(22, 26, 40, 0.7), transparent 70%),
+    radial-gradient(55% 55% at 86% 36%, rgba(34, 38, 56, 0.8), transparent 70%);
+  filter: blur(10px);
+  animation: cloudDrift 90s ease-in-out infinite alternate;
+}
+@keyframes cloudDrift {
+  from { transform: translateX(-3%); }
+  to { transform: translateX(3%); }
 }
 
 .fog {
@@ -168,7 +213,7 @@ a {
   width: 100%;
   background: rgba(7, 7, 10, 0.7);
   border: 1px solid rgba(233, 230, 218, 0.28);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 15px 16px;
   color: var(--bone);
   font-family: var(--sans);
@@ -240,28 +285,30 @@ input[type='range']::-webkit-slider-thumb {
   margin-left: 4px;
 }
 
-/* Buttons */
+/* Buttons — crisp, gothic, squared edges */
 .btn {
   font-family: var(--serif);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  font-size: 0.84rem;
-  border: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+  border: 1px solid transparent;
   cursor: pointer;
-  border-radius: 12px;
-  padding: 15px 26px;
-  transition: transform 0.18s, box-shadow 0.25s, background 0.25s, opacity 0.2s;
+  border-radius: 2px;
+  padding: 13px 24px;
+  transition: transform 0.15s, box-shadow 0.25s, background 0.25s, border-color 0.2s, opacity 0.2s;
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, var(--ember), var(--ember-deep));
+  background: linear-gradient(180deg, #e3434f, var(--ember-deep));
   color: var(--bone);
-  box-shadow: var(--shadow-glow);
+  border-color: rgba(255, 120, 130, 0.35);
+  box-shadow: 0 2px 14px rgba(230, 57, 70, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 50px rgba(230, 57, 70, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 22px rgba(230, 57, 70, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .btn-primary:disabled {
@@ -271,14 +318,15 @@ input[type='range']::-webkit-slider-thumb {
 }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--ash);
-  border: 1px solid rgba(233, 230, 218, 0.12);
+  background: rgba(233, 230, 218, 0.03);
+  color: var(--bone-dim);
+  border: 1px solid rgba(233, 230, 218, 0.22);
 }
 
 .btn-ghost:hover {
   color: var(--bone);
-  border-color: rgba(233, 230, 218, 0.3);
+  border-color: rgba(233, 230, 218, 0.45);
+  background: rgba(233, 230, 218, 0.07);
 }
 
 .onboard-actions {
@@ -639,8 +687,8 @@ input[type='range']::-webkit-slider-thumb {
 .seg {
   display: inline-flex;
   background: rgba(7, 7, 10, 0.6);
-  border: 1px solid rgba(233, 230, 218, 0.1);
-  border-radius: 99px;
+  border: 1px solid rgba(233, 230, 218, 0.12);
+  border-radius: 3px;
   padding: 2px;
 }
 .seg-btn {
@@ -651,15 +699,35 @@ input[type='range']::-webkit-slider-thumb {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 5px 14px;
-  border-radius: 99px;
+  padding: 6px 14px;
+  border-radius: 2px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .seg-btn.active {
   background: var(--ember);
   color: var(--bone);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 1px 8px rgba(230, 57, 70, 0.3);
+}
+
+/* Settings — tone control & status flashes */
+.settings-tone .seg {
+  display: flex;
+  width: 100%;
+}
+.settings-tone .seg-btn {
+  flex: 1;
+  text-align: center;
+}
+.settings-flash {
+  color: var(--spectral);
+  margin-left: 10px;
+  font-size: 0.85rem;
+}
+.settings-error {
+  color: var(--ember);
+  font-size: 0.85rem;
+  margin-top: 8px;
 }
 
 .wk {
@@ -897,6 +965,93 @@ input[type='range']::-webkit-slider-thumb {
   flex: 1;
   color: var(--bone-dim);
 }
+.exist-meta {
+  color: var(--ash);
+  font-size: 0.82em;
+}
+
+/* ============ LIFE-IN-YEARS GRID ============ */
+.year-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 8px;
+}
+.yr {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: rgba(233, 230, 218, 0.06);
+  color: var(--ash);
+  font-family: var(--serif);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  appearance: none;
+  overflow: hidden;
+}
+.yr:disabled { cursor: default; }
+.yr .yr-age { opacity: 0.75; }
+.yr.lived {
+  background: var(--ash-faint);
+  color: var(--bone-dim);
+}
+.yr.lived::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  background:
+    linear-gradient(45deg, transparent 44%, rgba(233, 230, 218, 0.4) 44% 56%, transparent 56%),
+    linear-gradient(-45deg, transparent 44%, rgba(233, 230, 218, 0.4) 44% 56%, transparent 56%);
+}
+.yr.current {
+  background: var(--ember);
+  color: var(--bone);
+  box-shadow: 0 0 10px var(--ember);
+  cursor: pointer;
+}
+.yr.future {
+  cursor: pointer;
+  background: rgba(233, 230, 218, 0.1);
+  transition: transform 0.12s, border-color 0.12s, background 0.12s;
+}
+.yr.future:hover {
+  border-color: var(--ember);
+  background: rgba(230, 57, 70, 0.18);
+  transform: scale(1.06);
+  color: var(--bone);
+  z-index: 2;
+}
+.yr.in-five {
+  box-shadow: inset 0 0 0 1px rgba(217, 180, 106, 0.45);
+}
+.yr.five-start {
+  border-color: rgba(217, 180, 106, 0.7);
+}
+.yr-age { position: relative; z-index: 1; }
+.yr-dots {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+  z-index: 2;
+}
+.yr-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.yr-dot.annual { background: var(--ember); }
+.yr-dot.five { background: var(--gold); }
+
+@media (max-width: 620px) {
+  .year-grid { grid-template-columns: repeat(8, 1fr); }
+}
 
 .modal-note {
   font-size: 0.82rem;
@@ -911,6 +1066,126 @@ input[type='range']::-webkit-slider-thumb {
 .modal-note strong {
   color: var(--bone-dim);
   font-weight: 600;
+}
+
+/* ============ DASHBOARD HERO BANNER ============ */
+.hero {
+  display: grid;
+  grid-template-columns: 1.25fr 0.75fr;
+  align-items: center;
+  gap: 12px;
+  min-height: 360px;
+  margin-bottom: 22px;
+  position: relative;
+}
+.hero-copy {
+  z-index: 2;
+}
+.hero .greeting {
+  margin-bottom: 10px;
+}
+.hero .greeting-sub {
+  max-width: 30ch;
+  margin-bottom: 22px;
+}
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.hero-art {
+  position: relative;
+  align-self: stretch;
+  min-height: 300px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.hero-art-img {
+  position: absolute;
+  right: 0;
+  bottom: -8px;
+  top: 0;
+  height: calc(100% + 8px);
+  width: 100%;
+  object-fit: contain;
+  object-position: bottom right;
+  filter: drop-shadow(0 12px 40px rgba(0, 0, 0, 0.6));
+  -webkit-mask-image: linear-gradient(to left, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to left, #000 70%, transparent 100%);
+  pointer-events: none;
+}
+.hero-art-svg {
+  align-items: center;
+}
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .hero-art {
+    display: none; /* keep the copy clean on small screens */
+  }
+}
+
+/* Settings — image upload slots */
+.img-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+.img-slot {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: rgba(7, 7, 10, 0.4);
+  border: 1px solid rgba(233, 230, 218, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+.img-thumb {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background-color: rgba(233, 230, 218, 0.06);
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(233, 230, 218, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-thumb-empty {
+  font-size: 0.62rem;
+  color: var(--ash);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.img-slot-meta {
+  flex: 1;
+  min-width: 0;
+}
+.img-slot-label {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  color: var(--bone);
+  margin-bottom: 2px;
+}
+.img-slot-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.img-upload-btn {
+  padding: 8px 16px;
+  display: inline-flex;
+  cursor: pointer;
+}
+.img-slot-actions .btn-ghost {
+  padding: 8px 14px;
 }
 
 .modal-seg {
@@ -944,6 +1219,21 @@ input[type='range']::-webkit-slider-thumb {
 .nm-text {
   font-size: 0.92rem;
   color: var(--bone-dim);
+}
+
+/* First-run getting-started card */
+.start-card {
+  border-color: rgba(217, 180, 106, 0.35);
+}
+.start-sub {
+  color: var(--ash-dim);
+  margin: 6px 0 14px;
+  line-height: 1.5;
+}
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 /* Quote */
@@ -1281,6 +1571,18 @@ select.field-input {
 .mini:hover { background: rgba(233, 230, 218, 0.14); }
 .mini:disabled { opacity: 0.25; cursor: not-allowed; }
 .mini.danger:hover { background: rgba(230, 57, 70, 0.25); color: var(--bone); }
+.gcard-actions { flex-wrap: wrap; }
+.gedit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gedit .field-input { width: 100%; }
+.gedit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
 
 /* ============ FINANCE ============ */
 .networth-card { text-align: center; }
@@ -1322,6 +1624,8 @@ select.field-input {
   gap: 10px;
   font-variant-numeric: tabular-nums;
 }
+.ledger-edit { padding: 8px 0; border-bottom: 1px solid rgba(233, 230, 218, 0.05); }
+.ledger-edit .gedit { width: 100%; }
 .donut-wrap {
   display: flex;
   align-items: center;
@@ -1355,6 +1659,14 @@ select.field-input {
 .member-rel {
   font-size: 0.78rem;
   color: var(--ash);
+}
+.member-actions {
+  display: flex;
+  gap: 6px;
+}
+.member-head .gedit {
+  flex: 1;
+  margin-right: 8px;
 }
 .ms-list {
   list-style: none;

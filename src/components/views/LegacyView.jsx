@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../../store.js'
+import { toneViews } from '../../lib/tone.js'
 
 const TYPES = ['Letter', 'Ethical will', 'Memory', 'Instruction', 'Document link']
 
@@ -9,6 +10,8 @@ export default function LegacyView() {
   const addLegacy = useStore((s) => s.addLegacy)
   const updateLegacy = useStore((s) => s.updateLegacy)
   const removeLegacy = useStore((s) => s.removeLegacy)
+  const tone = useStore((s) => s.tone)
+  const tv = toneViews(tone)
 
   const [type, setType] = useState('Letter')
   const [title, setTitle] = useState('')
@@ -26,10 +29,7 @@ export default function LegacyView() {
   return (
     <div>
       <h2 className="view-title">Legacy Vault</h2>
-      <p className="view-sub">
-        What you leave behind. Letters, an ethical will, memories, hand-off instructions.
-        Stored only on this device.
-      </p>
+      <p className="view-sub">{tv.legacy.sub}</p>
 
       <form className="legacy-form card" onSubmit={submit}>
         <div className="inline-form tight">

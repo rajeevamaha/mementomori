@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../../store.js'
+import { toneViews } from '../../lib/tone.js'
 
 const QUESTIONS = [
   { key: 'proud', q: 'What did you do since last time that your dying self would thank you for?' },
@@ -13,6 +14,8 @@ const QUESTIONS = [
 export default function ReflectView() {
   const reviews = useStore((s) => s.reviews)
   const addReview = useStore((s) => s.addReview)
+  const tone = useStore((s) => s.tone)
+  const tv = toneViews(tone)
   const [answers, setAnswers] = useState({})
   const [saved, setSaved] = useState(false)
 
@@ -30,7 +33,7 @@ export default function ReflectView() {
   return (
     <div>
       <h2 className="view-title">Review Ritual</h2>
-      <p className="view-sub">A periodic sit-down with your mortality. Answer honestly; the dead don't lie.</p>
+      <p className="view-sub">{tv.reflect.sub}</p>
 
       <form className="card ritual" onSubmit={submit}>
         {QUESTIONS.map((item, i) => (

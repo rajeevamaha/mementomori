@@ -1,13 +1,19 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../../store.js'
+import { toneViews } from '../../lib/tone.js'
 
 function MemberCard({ m }) {
   const addMilestone = useStore((s) => s.addMilestone)
   const removeMilestone = useStore((s) => s.removeMilestone)
   const removeFamilyMember = useStore((s) => s.removeFamilyMember)
+  const updateFamilyMember = useStore((s) => s.updateFamilyMember)
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [eName, setEName] = useState(m.name)
+  const [eRelation, setERelation] = useState(m.relation || '')
+  const [eDob, setEDob] = useState(m.dob || '')
 
   const submit = (e) => {
     e.preventDefault()
@@ -17,14 +23,41 @@ function MemberCard({ m }) {
     setDate('')
   }
 
+  const startEdit = () => {
+    setEName(m.name)
+    setERelation(m.relation || '')
+    setEDob(m.dob || '')
+    setEditing(true)
+  }
+
+  const save = () => {
+    updateFamilyMember(m.id, { name: eName.trim() || m.name, relation: eRelation.trim(), dob: eDob })
+    setEditing(false)
+  }
+
   return (
     <motion.div className="card" layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
       <div className="member-head">
-        <div>
-          <div className="member-name">{m.name}</div>
-          <div className="member-rel">{m.relation || 'family'}{m.dob ? ` · b. ${m.dob}` : ''}</div>
+        {editing ? (
+          <div className="gedit">
+            <input className="field-input grow" placeholder="Name" value={eName} onChange={(e) => setEName(e.target.value)} />
+            <input className="field-input" placeholder="Relation (spouse, child…)" value={eRelation} onChange={(e) => setERelation(e.target.value)} />
+            <input className="field-input" type="date" value={eDob} onChange={(e) => setEDob(e.target.value)} />
+            <div className="gedit-actions">
+              <button className="mini" onClick={save}>Save</button>
+              <button className="mini" onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="member-name">{m.name}</div>
+            <div className="member-rel">{m.relation || 'family'}{m.dob ? ` · b. ${m.dob}` : ''}</div>
+          </div>
+        )}
+        <div className="member-actions">
+          <button className="mini" aria-label="Edit family member" onClick={startEdit}>✎</button>
+          <button className="mini danger" onClick={() => removeFamilyMember(m.id)}>✕</button>
         </div>
-        <button className="mini danger" onClick={() => removeFamilyMember(m.id)}>✕</button>
       </div>
       <ul className="ms-list">
         {m.milestones.length === 0 && <li className="kempty">No milestones yet.</li>}
@@ -50,6 +83,8 @@ function MemberCard({ m }) {
 export default function FamilyView() {
   const family = useStore((s) => s.family)
   const addFamilyMember = useStore((s) => s.addFamilyMember)
+  const tone = useStore((s) => s.tone)
+  const tv = toneViews(tone)
   const [name, setName] = useState('')
   const [relation, setRelation] = useState('')
   const [dob, setDob] = useState('')
@@ -66,7 +101,7 @@ export default function FamilyView() {
   return (
     <div>
       <h2 className="view-title">Family Hub</h2>
-      <p className="view-sub">The people your time is really for. Track them and the milestones you want to be there for.</p>
+      <p className="view-sub">{tv.family.sub}</p>
 
       <form className="inline-form" onSubmit={submit}>
         <input className="field-input grow" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />

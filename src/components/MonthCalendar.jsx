@@ -48,6 +48,7 @@ function MonthCalendar() {
       }
     })
     goals.forEach((g) => {
+      if (g.horizon) return // annual / 5-year goals show only in the Years view
       const d = parseDate(g.targetDate)
       if (!d) return
       add(d.getFullYear(), d.getMonth(), { emoji: '🎯', label: g.title })

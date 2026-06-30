@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore, financeTotals } from '../../store.js'
 import { fmt } from '../../lib/time.js'
+import { toneViews } from '../../lib/tone.js'
 
 const DONUT_COLORS = ['#e63946', '#d9b46a', '#7fffb0', '#9d8cff', '#5ab0e6', '#e68a5a', '#b0b6c2']
 
@@ -45,7 +46,42 @@ function Donut({ items }) {
   )
 }
 
-function Ledger({ kind, items, onAdd, onRemove, accent }) {
+function LedgerRow({ kind, item, onRemove, onUpdate }) {
+  const [editing, setEditing] = useState(false)
+  const [label, setLabel] = useState(item.label)
+  const [value, setValue] = useState(String(item.value))
+  const startEdit = () => { setLabel(item.label); setValue(String(item.value)); setEditing(true) }
+  const save = () => {
+    onUpdate(kind, item.id, { label: label.trim() || item.label, value: Number(value) || 0 })
+    setEditing(false)
+  }
+  if (editing) {
+    return (
+      <li className="ledger-edit">
+        <div className="gedit">
+          <input className="field-input grow" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" />
+          <input className="field-input" type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="$" />
+          <div className="gedit-actions">
+            <button className="mini" onClick={save}>Save</button>
+            <button className="mini" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      </li>
+    )
+  }
+  return (
+    <li>
+      <span>{item.label}</span>
+      <span className="ledger-val">
+        ${fmt(item.value)}
+        <button className="mini" aria-label="Edit item" onClick={startEdit}>✎</button>
+        <button className="mini danger" aria-label="Remove item" onClick={() => onRemove(kind, item.id)}>✕</button>
+      </span>
+    </li>
+  )
+}
+
+function Ledger({ kind, items, onAdd, onRemove, onUpdate, accent }) {
   const [label, setLabel] = useState('')
   const [value, setValue] = useState('')
   const submit = (e) => {
@@ -69,10 +105,7 @@ function Ledger({ kind, items, onAdd, onRemove, accent }) {
       <ul className="ledger">
         {items.length === 0 && <li className="kempty">Nothing recorded.</li>}
         {items.map((x) => (
-          <li key={x.id}>
-            <span>{x.label}</span>
-            <span className="ledger-val">${fmt(x.value)}<button className="mini danger" onClick={() => onRemove(kind, x.id)}>✕</button></span>
-          </li>
+          <LedgerRow key={x.id} kind={kind} item={x} onRemove={onRemove} onUpdate={onUpdate} />
         ))}
       </ul>
     </div>
@@ -84,7 +117,10 @@ export default function FinanceView() {
   const addAsset = useStore((s) => s.addAsset)
   const addLiability = useStore((s) => s.addLiability)
   const removeFinanceItem = useStore((s) => s.removeFinanceItem)
+  const updateFinanceItem = useStore((s) => s.updateFinanceItem)
   const setRetirementTarget = useStore((s) => s.setRetirementTarget)
+  const tone = useStore((s) => s.tone)
+  const tv = toneViews(tone)
 
   const { assets, liabilities, netWorth } = financeTotals(finance)
   const target = finance.retirementTarget || 0
@@ -93,7 +129,7 @@ export default function FinanceView() {
   return (
     <div>
       <h2 className="view-title">Financial Planner</h2>
-      <p className="view-sub">Net worth, allocation, and your runway toward a target corpus.</p>
+      <p className="view-sub">{tv.finance.sub}</p>
 
       <div className="grid">
         <div className="card span-2 networth-card">
@@ -126,8 +162,8 @@ export default function FinanceView() {
           )}
         </div>
 
-        <Ledger kind="assets" items={finance.assets} onAdd={addAsset} onRemove={removeFinanceItem} accent="var(--spectral)" />
-        <Ledger kind="liabilities" items={finance.liabilities} onAdd={addLiability} onRemove={removeFinanceItem} accent="var(--ember)" />
+        <Ledger kind="assets" items={finance.assets} onAdd={addAsset} onRemove={removeFinanceItem} onUpdate={updateFinanceItem} accent="var(--spectral)" />
+        <Ledger kind="liabilities" items={finance.liabilities} onAdd={addLiability} onRemove={removeFinanceItem} onUpdate={updateFinanceItem} accent="var(--ember)" />
 
         <div className="card span-2">
           <div className="card-title">Asset allocation</div>

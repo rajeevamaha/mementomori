@@ -26,10 +26,17 @@ export const useStore = create(
       profile: null, // { name, dob, lifeExpectancy }
       view: 'dashboard',
       dockOpen: true, // Death side-dock, open by default
+      tone: 'balanced', // 'gentle' | 'balanced' | 'unflinching'
+      // User-supplied artwork as data URLs (downscaled). reaper = wolf avatar,
+      // bg = full-page background, hero = onboarding background.
+      images: { reaper: '', bg: '', hero: '' },
 
       setView: (view) => set({ view }),
       setDockOpen: (dockOpen) => set({ dockOpen }),
       toggleDock: () => set((s) => ({ dockOpen: !s.dockOpen })),
+      setTone: (tone) => set({ tone }),
+      setImage: (slot, dataUrl) => set((s) => ({ images: { ...s.images, [slot]: dataUrl } })),
+      clearImage: (slot) => set((s) => ({ images: { ...s.images, [slot]: '' } })),
 
       completeOnboarding: (profile) => set({ profile, view: 'dashboard' }),
       resetAll: () =>
@@ -43,6 +50,8 @@ export const useStore = create(
           reviews: [],
           events: [],
           anniversaryAsked: false,
+          tone: 'balanced',
+          images: { reaper: '', bg: '', hero: '' },
         }),
       updateProfile: (patch) =>
         set((s) => ({ profile: { ...s.profile, ...patch } })),
@@ -61,6 +70,10 @@ export const useStore = create(
               status: g.status || 'BACKLOG',
               priority: g.priority ?? 2,
               targetDate: g.targetDate || '',
+              // horizon: null = ordinary kanban goal; 'annual' / 'fiveyear' =
+              // year-scoped goals shown ONLY in the Years life-grid view.
+              horizon: g.horizon || null,
+              year: g.year || null,
               createdAt: Date.now(),
             },
           ],
@@ -102,6 +115,15 @@ export const useStore = create(
             [kind]: s.finance[kind].filter((x) => x.id !== id),
           },
         })),
+      updateFinanceItem: (kind, id, patch) =>
+        set((s) => ({
+          finance: {
+            ...s.finance,
+            [kind]: s.finance[kind].map((x) =>
+              x.id === id ? { ...x, ...patch } : x
+            ),
+          },
+        })),
       setRetirementTarget: (v) =>
         set((s) => ({ finance: { ...s.finance, retirementTarget: Number(v) || 0 } })),
 
@@ -113,6 +135,10 @@ export const useStore = create(
             ...s.family,
             { id: uid(), name: m.name, relation: m.relation || '', dob: m.dob || '', milestones: [] },
           ],
+        })),
+      updateFamilyMember: (id, patch) =>
+        set((s) => ({
+          family: s.family.map((m) => (m.id === id ? { ...m, ...patch } : m)),
         })),
       removeFamilyMember: (id) =>
         set((s) => ({ family: s.family.filter((m) => m.id !== id) })),
@@ -180,10 +206,31 @@ export const useStore = create(
             ...s.reviews,
           ],
         })),
+
+      // ---- backup import (tolerant: only overwrite keys present in the file) ----
+      importData: (data) =>
+        set((s) => ({
+          profile: data.profile ?? s.profile,
+          goals: data.goals ?? s.goals,
+          finance: data.finance ?? s.finance,
+          family: data.family ?? s.family,
+          legacy: data.legacy ?? s.legacy,
+          reviews: data.reviews ?? s.reviews,
+          events: data.events ?? s.events,
+          tone: data.tone ?? s.tone,
+        })),
     }),
     {
       name: 'mbd.store.v1',
-      version: 1,
+      version: 2,
+      // v2: drop any per-device uploaded images so the built-in (transparent)
+      // wolf defaults in /public win. Earlier uploads were flat white-bg PNGs.
+      migrate: (state, fromVersion) => {
+        if (state && fromVersion < 2) {
+          state.images = { reaper: '', bg: '', hero: '' }
+        }
+        return state
+      },
     }
   )
 )

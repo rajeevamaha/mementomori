@@ -1,13 +1,13 @@
 import { memo, useState } from 'react'
 import { motion } from 'framer-motion'
 import MonthCalendar from './MonthCalendar.jsx'
+import YearGrid from './YearGrid.jsx'
 
-// "Your life in weeks" is a dense since-birth grid; "months" is a full calendar
-// (see MonthCalendar) with year labels, crossed-off lived months, milestones,
-// and clickable upcoming months.
+// "Weeks" is a dense since-birth grid; "months" is a full calendar (MonthCalendar)
+// with milestones; "years" (YearGrid) is one box per year with annual / 5-year
+// goals shown only there.
 function LifeWeeks({ totalWeeks, weeksLived, totalMonths, monthsLived }) {
   const [mode, setMode] = useState('weeks')
-  const isWeeks = mode === 'weeks'
 
   const cells = []
   const cap = Math.min(totalWeeks, 110 * 52)
@@ -18,17 +18,26 @@ function LifeWeeks({ totalWeeks, weeksLived, totalMonths, monthsLived }) {
     cells.push(cls)
   }
 
+  const MODES = [
+    { key: 'weeks', label: 'Weeks' },
+    { key: 'months', label: 'Months' },
+    { key: 'years', label: 'Years' },
+  ]
+
   return (
     <div className="card span-2">
       <div className="card-title life-title">
         <span>⌛ Your life in {mode}</span>
         <div className="seg">
-          <button className={`seg-btn ${isWeeks ? 'active' : ''}`} onClick={() => setMode('weeks')}>Weeks</button>
-          <button className={`seg-btn ${!isWeeks ? 'active' : ''}`} onClick={() => setMode('months')}>Months</button>
+          {MODES.map((m) => (
+            <button key={m.key} className={`seg-btn ${mode === m.key ? 'active' : ''}`} onClick={() => setMode(m.key)}>
+              {m.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {isWeeks ? (
+      {mode === 'weeks' && (
         <>
           <div className="weeks-legend">
             <span className="legend-chip">
@@ -57,7 +66,9 @@ function LifeWeeks({ totalWeeks, weeksLived, totalMonths, monthsLived }) {
             ))}
           </motion.div>
         </>
-      ) : (
+      )}
+
+      {mode === 'months' && (
         <>
           <div className="weeks-legend">
             <span className="legend-chip">
@@ -73,6 +84,8 @@ function LifeWeeks({ totalWeeks, weeksLived, totalMonths, monthsLived }) {
           <MonthCalendar />
         </>
       )}
+
+      {mode === 'years' && <YearGrid />}
     </div>
   )
 }
