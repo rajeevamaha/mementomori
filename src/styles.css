@@ -1082,7 +1082,16 @@ input[type='range']::-webkit-slider-thumb {
   z-index: 2;
 }
 .hero .greeting {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+}
+.hero-punch {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: clamp(1.05rem, 2.3vw, 1.5rem);
+  line-height: 1.3;
+  color: var(--ember);
+  max-width: 26ch;
+  margin: 0 0 14px;
 }
 .hero .greeting-sub {
   max-width: 30ch;

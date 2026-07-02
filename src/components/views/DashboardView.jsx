@@ -69,6 +69,9 @@ export default function DashboardView() {
             {gone ? t.gone : t.running}
             <span className="name">{profile.name}</span>.
           </h2>
+          <p className="hero-punch">
+            {profile.name}, you are going to die. Why not make it worth it?
+          </p>
           <p className="greeting-sub">
             {t.sub.replace('{age}', fmt(life.ageYears))} {isEmpty ? '' : '— spend it like it is counted, because it is.'}
           </p>
