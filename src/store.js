@@ -46,6 +46,9 @@ export const useStore = create(
           goals: [],
           finance: { assets: [], liabilities: [], retirementTarget: 0 },
           family: [],
+          insurance: { hasPolicy: null, policies: [] },
+          health: { conditions: [], items: {} },
+          will: { hasWill: null, location: '', executor: '', guardian: '', lastUpdated: '', checklist: {} },
           legacy: [],
           reviews: [],
           events: [],
@@ -159,6 +162,86 @@ export const useStore = create(
           ),
         })),
 
+      // ---- life insurance (shown in Family) ----
+      // hasPolicy: null = unanswered, true/false = declared. policies[] hold the
+      // details when the user has cover.
+      insurance: { hasPolicy: null, policies: [] },
+      setInsuranceStatus: (hasPolicy) =>
+        set((s) => ({ insurance: { ...s.insurance, hasPolicy } })),
+      addPolicy: (p) =>
+        set((s) => ({
+          insurance: {
+            ...s.insurance,
+            hasPolicy: true,
+            policies: [
+              ...s.insurance.policies,
+              {
+                id: uid(),
+                insurer: p.insurer || '',
+                kind: p.kind || 'Term',
+                coverage: Number(p.coverage) || 0,
+                beneficiary: p.beneficiary || '',
+                premium: Number(p.premium) || 0,
+                premiumFreq: p.premiumFreq || 'yr',
+                renewal: p.renewal || '',
+                note: p.note || '',
+              },
+            ],
+          },
+        })),
+      updatePolicy: (id, patch) =>
+        set((s) => ({
+          insurance: {
+            ...s.insurance,
+            policies: s.insurance.policies.map((x) =>
+              x.id === id ? { ...x, ...patch } : x
+            ),
+          },
+        })),
+      removePolicy: (id) =>
+        set((s) => ({
+          insurance: {
+            ...s.insurance,
+            policies: s.insurance.policies.filter((x) => x.id !== id),
+          },
+        })),
+
+      // ---- health (age/sex screening checklist) ----
+      // conditions[] = active risk gates ('ever-smoker','diabetes','hypertension',
+      // 'overweight','family-history','high-risk') that unlock conditional screens.
+      // items = per-screening tracking: { [id]: { status, lastDone, nextDue, note } }.
+      health: { conditions: [], items: {} },
+      setHealthItem: (id, patch) =>
+        set((s) => ({
+          health: {
+            ...s.health,
+            items: { ...s.health.items, [id]: { ...(s.health.items[id] || {}), ...patch } },
+          },
+        })),
+      clearHealthItem: (id) =>
+        set((s) => {
+          const items = { ...s.health.items }
+          delete items[id]
+          return { health: { ...s.health, items } }
+        }),
+      toggleCondition: (cond) =>
+        set((s) => ({
+          health: {
+            ...s.health,
+            conditions: s.health.conditions.includes(cond)
+              ? s.health.conditions.filter((c) => c !== cond)
+              : [...s.health.conditions, cond],
+          },
+        })),
+
+      // ---- will planning tracker ----
+      will: { hasWill: null, location: '', executor: '', guardian: '', lastUpdated: '', checklist: {} },
+      setWill: (patch) => set((s) => ({ will: { ...s.will, ...patch } })),
+      toggleWillStep: (key) =>
+        set((s) => ({
+          will: { ...s.will, checklist: { ...s.will.checklist, [key]: !s.will.checklist[key] } },
+        })),
+
       // ---- legacy vault ----
       legacy: [],
       addLegacy: (entry) =>
@@ -214,6 +297,9 @@ export const useStore = create(
           goals: data.goals ?? s.goals,
           finance: data.finance ?? s.finance,
           family: data.family ?? s.family,
+          insurance: data.insurance ?? s.insurance,
+          health: data.health ?? s.health,
+          will: data.will ?? s.will,
           legacy: data.legacy ?? s.legacy,
           reviews: data.reviews ?? s.reviews,
           events: data.events ?? s.events,
@@ -222,12 +308,20 @@ export const useStore = create(
     }),
     {
       name: 'mbd.store.v1',
-      version: 2,
+      version: 3,
       // v2: drop any per-device uploaded images so the built-in (transparent)
       // wolf defaults in /public win. Earlier uploads were flat white-bg PNGs.
+      // v3: seed the new health / insurance / will slices for existing users.
       migrate: (state, fromVersion) => {
         if (state && fromVersion < 2) {
           state.images = { reaper: '', bg: '', hero: '' }
+        }
+        if (state && fromVersion < 3) {
+          state.insurance = state.insurance || { hasPolicy: null, policies: [] }
+          state.health = state.health || { conditions: [], items: {} }
+          state.will = state.will || {
+            hasWill: null, location: '', executor: '', guardian: '', lastUpdated: '', checklist: {},
+          }
         }
         return state
       },

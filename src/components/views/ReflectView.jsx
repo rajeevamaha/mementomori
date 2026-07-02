@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../../store.js'
 import { toneViews } from '../../lib/tone.js'
+import LegacyView from './LegacyView.jsx'
 
 const QUESTIONS = [
   { key: 'proud', q: 'What did you do since last time that your dying self would thank you for?' },
@@ -75,6 +76,9 @@ export default function ReflectView() {
           </div>
         </>
       )}
+
+      <div className="section-divider" />
+      <LegacyView />
     </div>
   )
 }

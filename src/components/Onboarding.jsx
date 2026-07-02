@@ -3,25 +3,29 @@ import { motion } from 'framer-motion'
 import Reaper from './Reaper.jsx'
 import { parseDate } from '../lib/time.js'
 
+const LAST = 3 // index of the final step (0-based); keep in sync with `steps`
+
 export default function Onboarding({ onComplete }) {
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
   const [name, setName] = useState('')
   const [dob, setDob] = useState('')
+  const [sex, setSex] = useState(null) // null = not chosen; 'female' | 'male' | '' (declined)
   const [life, setLife] = useState(80)
 
   const today = new Date().toISOString().slice(0, 10)
   const dobValid = !!parseDate(dob) && new Date(dob) < new Date()
 
-  const canAdvance = step === 0 ? name.trim().length > 0 : step === 1 ? dobValid : true
+  const canAdvance =
+    step === 0 ? name.trim().length > 0 : step === 1 ? dobValid : step === 2 ? sex !== null : true
 
   const go = (delta) => {
     setDir(delta)
-    setStep((s) => Math.min(2, Math.max(0, s + delta)))
+    setStep((s) => Math.min(LAST, Math.max(0, s + delta)))
   }
 
   const finish = () => {
-    onComplete({ name: name.trim(), dob, lifeExpectancy: life })
+    onComplete({ name: name.trim(), dob, sex: sex || '', lifeExpectancy: life })
   }
 
   const steps = [
@@ -67,7 +71,36 @@ export default function Onboarding({ onComplete }) {
       ),
     },
     {
-      eyebrow: 'Chapter III — The Bargain',
+      eyebrow: 'Chapter III — The Vessel',
+      title: 'What vessel carries\nyou through this?',
+      sub: "Some of the body's warnings are written by sex. Tell the reaper which, and it will know what to watch for.",
+      body: (
+        <div>
+          <label className="field-label">Sex at birth</label>
+          <div className="sex-choice">
+            {[
+              { k: 'female', l: 'Female' },
+              { k: 'male', l: 'Male' },
+              { k: '', l: 'Prefer not to say' },
+            ].map((o) => (
+              <button
+                key={o.l}
+                type="button"
+                className={`btn ${sex === o.k ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSex(o.k)}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">
+            Used only to tailor age-appropriate health screenings (mammograms, prostate, and the like). Stored on this device alone.
+          </p>
+        </div>
+      ),
+    },
+    {
+      eyebrow: 'Chapter IV — The Bargain',
       title: 'How long do you\nintend to last?',
       sub: 'The world average is roughly 73. The hopeful aim for 80, the stubborn for 90. Set your wager.',
       body: (
@@ -138,7 +171,7 @@ export default function Onboarding({ onComplete }) {
             </span>
           )}
 
-          {step < 2 ? (
+          {step < LAST ? (
             <button className="btn btn-primary" disabled={!canAdvance} onClick={() => go(1)}>
               Continue
             </button>

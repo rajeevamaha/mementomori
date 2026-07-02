@@ -4,28 +4,35 @@ import DashboardView from './views/DashboardView.jsx'
 import GoalsView from './views/GoalsView.jsx'
 import FinanceView from './views/FinanceView.jsx'
 import FamilyView from './views/FamilyView.jsx'
-import LegacyView from './views/LegacyView.jsx'
+import HealthView from './views/HealthView.jsx'
 import ReflectView from './views/ReflectView.jsx'
+import WillView from './views/WillView.jsx'
 import SettingsView from './views/SettingsView.jsx'
 import DeathDock from './DeathDock.jsx'
 
 const NAV = [
   { key: 'dashboard', label: 'Timeline', glyph: '☠' },
-  { key: 'goals', label: 'Goals', glyph: '🎯' },
-  { key: 'finance', label: 'Money', glyph: '⚖' },
   { key: 'family', label: 'Family', glyph: '🜨' },
-  { key: 'legacy', label: 'Legacy', glyph: '⚱' },
+  { key: 'health', label: 'Health', glyph: '⚕' },
+  { key: 'finance', label: 'Money', glyph: '⚖' },
+  { key: 'goals', label: 'Goals', glyph: '🎯' },
   { key: 'reflect', label: 'Reflect', glyph: '🕯' },
+  { key: 'will', label: 'Will', glyph: '📜' },
   { key: 'settings', label: 'Settings', glyph: '⚙' },
 ]
 
+// ReflectView now renders the reflection ritual + the Legacy vault (merged tab).
+// 'legacy' is kept as an alias so old persisted view state / coach navigation
+// still resolves to the combined screen.
 const VIEWS = {
   dashboard: DashboardView,
-  goals: GoalsView,
-  finance: FinanceView,
   family: FamilyView,
-  legacy: LegacyView,
+  health: HealthView,
+  finance: FinanceView,
+  goals: GoalsView,
   reflect: ReflectView,
+  legacy: ReflectView,
+  will: WillView,
   settings: SettingsView,
 }
 
