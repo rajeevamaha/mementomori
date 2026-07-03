@@ -27,13 +27,22 @@ const MAX_TOKENS = 2048
 export const coachModel = () => process.env.MBD_COACH_MODEL || 'claude-opus-4-8'
 // Groq fallback (free tier) — called with plain fetch(), no SDK needed.
 export const groqModel = () => process.env.MBD_GROQ_MODEL || 'llama-3.3-70b-versatile'
-const hasAnthropicKey = () => !!process.env.ANTHROPIC_API_KEY
-const hasGroqKey = () => !!process.env.GROQ_API_KEY
+
+// Keys arrive by copy-paste (into .env or Vercel's env-var form) and often
+// carry stowaways — trailing newlines, quotes, or whole pasted sentences. A
+// key is a single token, so keep only the first one; anything else would blow
+// up later as an invalid Authorization header.
+const cleanKey = (v) => (v || '').trim().replace(/^["']|["']$/g, '').split(/\s+/)[0] || ''
+const anthropicKey = () => cleanKey(process.env.ANTHROPIC_API_KEY)
+const groqKey = () => cleanKey(process.env.GROQ_API_KEY)
+const hasAnthropicKey = () => !!anthropicKey()
+const hasGroqKey = () => !!groqKey()
 
 let _client = null
 function anthropicClient() {
-  if (!hasAnthropicKey()) return null
-  if (!_client) _client = new Anthropic()
+  const apiKey = anthropicKey()
+  if (!apiKey) return null
+  if (!_client) _client = new Anthropic({ apiKey })
   return _client
 }
 
@@ -262,7 +271,7 @@ async function streamGroqChat({ messages, tools, onText }) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      Authorization: `Bearer ${groqKey()}`,
     },
     body: JSON.stringify({
       model: groqModel(),
@@ -337,9 +346,30 @@ async function streamGroqChat({ messages, tools, onText }) {
   const tail = buf.trim()
   if (tail) handleLine(tail)
 
+  // Llama sometimes writes tool calls as literal text instead of structured
+  // tool_calls — e.g. <function=add_goal>{"title":…}</function> or
+  // <function(add_goal)>{"title":…}</function>. Salvage them into real
+  // tool_use blocks and strip the markup from the visible text (the client
+  // replaces the streamed bubble with this cleaned text on 'final').
+  const textToolUses = []
+  const TEXT_TOOL_RE = /<function[=(]\s*([\w-]+?)\s*\)?\s*>([\s\S]*?)<\/function>/g
+  text = text
+    .replace(TEXT_TOOL_RE, (_m, name, args) => {
+      try {
+        textToolUses.push({ name, input: JSON.parse(args) })
+      } catch (e) {
+        console.error(`[coach] groq text tool_call args parse failed (${name}): ${e.message}`)
+      }
+      return ''
+    })
+    .trim()
+
   // Build a final Anthropic-format content array.
   const content = []
   if (text) content.push({ type: 'text', text })
+  textToolUses.forEach((tu, i) => {
+    content.push({ type: 'tool_use', id: `call_text_${Date.now()}_${i}`, name: tu.name, input: tu.input })
+  })
   toolCalls.forEach((tc, i) => {
     if (!tc) return
     let input = {}

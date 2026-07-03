@@ -113,6 +113,15 @@ export default function DeathDock() {
       return c
     })
 
+  const setBubbleText = (t) =>
+    setDisplay((d) => {
+      const c = d.slice()
+      const last = { ...c[c.length - 1] }
+      last.text = t
+      c[c.length - 1] = last
+      return c
+    })
+
   async function streamTurn() {
     const resp = await fetch('/api/coach/chat', {
       method: 'POST',
@@ -158,11 +167,19 @@ export default function DeathDock() {
 
     try {
       let guard = 0
+      let bubbleBase = '' // text settled by finished rounds of this turn
       while (guard++ < 6) {
         const final = await streamTurn()
         // A stream that ends without a final event was cut off (server killed
         // mid-reply, e.g. a serverless timeout) — surface it, don't go silent.
         if (!final) throw new Error('The thread was cut mid-reply. Ask me again.')
+        // Replace the streamed deltas with the settled text from `final` — the
+        // server may have stripped tool-call markup Llama wrote into the text.
+        bubbleBase += (final.content || [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('')
+        setBubbleText(bubbleBase)
         convoRef.current.push({ role: 'assistant', content: final.content })
         if (final.stop_reason !== 'tool_use') break
 
