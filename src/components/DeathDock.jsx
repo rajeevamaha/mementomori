@@ -160,7 +160,9 @@ export default function DeathDock() {
       let guard = 0
       while (guard++ < 6) {
         const final = await streamTurn()
-        if (!final) break
+        // A stream that ends without a final event was cut off (server killed
+        // mid-reply, e.g. a serverless timeout) — surface it, don't go silent.
+        if (!final) throw new Error('The thread was cut mid-reply. Ask me again.')
         convoRef.current.push({ role: 'assistant', content: final.content })
         if (final.stop_reason !== 'tool_use') break
 
@@ -191,7 +193,7 @@ export default function DeathDock() {
             <div className="dock-title">DEATH</div>
             <div className="dock-status">
               {health.ok === false ? (
-                <span className="warn">Add ANTHROPIC_API_KEY or GROQ_API_KEY to .env</span>
+                <span className="warn">No API key — set ANTHROPIC_API_KEY or GROQ_API_KEY (.env locally, env vars on Vercel)</span>
               ) : health.ok ? (
                 <span className="muted">always listening · {lastModel || health.model}</span>
               ) : (

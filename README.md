@@ -33,8 +33,10 @@ reaper shows you exactly how much sand is left, then helps you spend it well.
 
 - **Vite + React 18** + **Framer Motion** (all animation).
 - **Zustand** for state, persisted to `localStorage` (the whole platform).
-- **Express** proxy (`server/index.mjs`) that holds the Anthropic key and
-  streams from Claude. The browser never sees the key.
+- **Coach core** (`server/coach.mjs`) that holds the API keys and streams from
+  Claude/Groq. The browser never sees the keys. Locally it's served by a thin
+  **Express** wrapper (`server/index.mjs`); on Vercel the same handlers deploy
+  as serverless functions (`api/coach/*.mjs`).
 - **@anthropic-ai/sdk** → `claude-opus-4-8` with adaptive thinking, streamed.
 
 ## Local development
@@ -84,6 +86,15 @@ MBD_COACH_MODEL=claude-sonnet-4-6   # cheaper/faster than the default opus-4-8
 MBD_GROQ_MODEL=llama-3.3-70b-versatile   # the Groq fallback model
 MBD_API_PORT=8787
 ```
+
+## Deploying on Vercel
+
+The repo deploys as a Vite static app **plus** serverless functions for the
+coach (`api/coach/health.mjs`, `api/coach/chat.mjs` — see `vercel.json`).
+For the coach to work in production, set the keys in **Project → Settings →
+Environment Variables** (`ANTHROPIC_API_KEY` and/or `GROQ_API_KEY`, Production
++ Preview) and **redeploy** — env vars only apply to new deployments. Optional
+overrides (`MBD_COACH_MODEL`, `MBD_GROQ_MODEL`) work there too.
 
 ## Reset
 
