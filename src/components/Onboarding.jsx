@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Reaper from './Reaper.jsx'
+import DateSelect from './DateSelect.jsx'
 import { parseDate } from '../lib/time.js'
 
 const LAST = 3 // index of the final step (0-based); keep in sync with `steps`
@@ -13,8 +14,10 @@ export default function Onboarding({ onComplete }) {
   const [sex, setSex] = useState(null) // null = not chosen; 'female' | 'male' | '' (declined)
   const [life, setLife] = useState(80)
 
-  const today = new Date().toISOString().slice(0, 10)
-  const dobValid = !!parseDate(dob) && new Date(dob) < new Date()
+  // Compare via the same local-midnight parse as lib/time.js — new Date(dob)
+  // parses as UTC and would accept "tomorrow" at night in western timezones.
+  const parsedDob = parseDate(dob)
+  const dobValid = !!parsedDob && parsedDob <= new Date()
 
   const canAdvance =
     step === 0 ? name.trim().length > 0 : step === 1 ? dobValid : step === 2 ? sex !== null : true
@@ -56,14 +59,7 @@ export default function Onboarding({ onComplete }) {
       body: (
         <div>
           <label className="field-label" htmlFor="dob">Date of birth</label>
-          <input
-            id="dob"
-            type="date"
-            className="field-input"
-            max={today}
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-          />
+          <DateSelect id="dob" value={dob} onChange={setDob} />
           <p className="field-hint">
             {dob && !dobValid ? 'Choose a date in the past.' : 'We never share this — it lives only here.'}
           </p>

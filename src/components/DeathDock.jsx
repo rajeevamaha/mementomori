@@ -66,6 +66,7 @@ export default function DeathDock() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [health, setHealth] = useState({ ok: null, model: null })
+  const [lastModel, setLastModel] = useState(null) // model that answered the last turn
   const convoRef = useRef([]) // Anthropic-format message list
   const scrollRef = useRef(null)
 
@@ -138,8 +139,10 @@ export default function DeathDock() {
         if (!line) continue
         const ev = JSON.parse(line)
         if (ev.type === 'text') pushText(ev.text)
-        else if (ev.type === 'final') final = ev
-        else if (ev.type === 'error') throw new Error(ev.error)
+        else if (ev.type === 'final') {
+          final = ev
+          if (ev.model) setLastModel(ev.model)
+        } else if (ev.type === 'error') throw new Error(ev.error)
       }
     }
     return final
@@ -188,9 +191,9 @@ export default function DeathDock() {
             <div className="dock-title">DEATH</div>
             <div className="dock-status">
               {health.ok === false ? (
-                <span className="warn">Add ANTHROPIC_API_KEY to .env</span>
+                <span className="warn">Add ANTHROPIC_API_KEY or GROQ_API_KEY to .env</span>
               ) : health.ok ? (
-                <span className="muted">always listening · {health.model}</span>
+                <span className="muted">always listening · {lastModel || health.model}</span>
               ) : (
                 '…'
               )}

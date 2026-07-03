@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useStore } from '../../store.js'
 import { toneViews } from '../../lib/tone.js'
+import DateSelect from '../DateSelect.jsx'
 
 function MemberCard({ m }) {
   const addMilestone = useStore((s) => s.addMilestone)
@@ -42,7 +43,7 @@ function MemberCard({ m }) {
           <div className="gedit">
             <input className="field-input grow" placeholder="Name" value={eName} onChange={(e) => setEName(e.target.value)} />
             <input className="field-input" placeholder="Relation (spouse, child…)" value={eRelation} onChange={(e) => setERelation(e.target.value)} />
-            <input className="field-input" type="date" value={eDob} onChange={(e) => setEDob(e.target.value)} />
+            <DateSelect value={eDob} onChange={setEDob} />
             <div className="gedit-actions">
               <button className="mini" onClick={save}>Save</button>
               <button className="mini" onClick={() => setEditing(false)}>Cancel</button>
@@ -254,7 +255,7 @@ export default function FamilyView() {
       <form className="inline-form" onSubmit={submit}>
         <input className="field-input grow" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="field-input" placeholder="Relation (spouse, child…)" value={relation} onChange={(e) => setRelation(e.target.value)} />
-        <input className="field-input" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+        <DateSelect value={dob} onChange={setDob} />
         <button className="btn btn-primary" type="submit">Add</button>
       </form>
 

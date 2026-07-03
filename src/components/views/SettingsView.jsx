@@ -1,13 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../../store.js'
+import DateSelect from '../DateSelect.jsx'
 
 const TONES = [
   { key: 'gentle', label: 'Gentle', hint: 'A softer hand — encouragement over confrontation.' },
   { key: 'balanced', label: 'Balanced', hint: 'Honest but humane — the default.' },
   { key: 'unflinching', label: 'Unflinching', hint: 'No cushioning. The clock, plainly.' },
 ]
-
-const today = new Date().toISOString().slice(0, 10)
 
 // Shrink an uploaded image in-browser so it fits comfortably in localStorage.
 function downscale(file, maxDim, type, quality) {
@@ -103,12 +102,26 @@ export default function SettingsView() {
   const [life, setLife] = useState(profile?.lifeExpectancy ?? 80)
   const [savedProfile, setSavedProfile] = useState(false)
 
+  // Re-seed when the store profile changes underneath us (e.g. Death's
+  // update_profile tool writes while this view is open) — the external
+  // change wins over unsaved edits, and Save no longer clobbers it.
+  useEffect(() => {
+    setName(profile?.name || '')
+    setDob(profile?.dob || '')
+    setLife(profile?.lifeExpectancy ?? 80)
+  }, [profile])
+
   const [dataFlash, setDataFlash] = useState('')
   const [dataError, setDataError] = useState('')
   const fileRef = useRef(null)
 
   const saveProfile = () => {
-    updateProfile({ name, dob, lifeExpectancy: life })
+    const t = new Date()
+    const todayStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+    const patch = { name, lifeExpectancy: life }
+    // A future birth date makes the life math negative — never persist one.
+    if (!dob || dob <= todayStr) patch.dob = dob
+    updateProfile(patch)
     setSavedProfile(true)
     setTimeout(() => setSavedProfile(false), 2500)
   }
@@ -194,13 +207,7 @@ export default function SettingsView() {
           />
 
           <label className="field-label" style={{ marginTop: 14 }}>Date of birth</label>
-          <input
-            className="field-input"
-            type="date"
-            max={today}
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-          />
+          <DateSelect value={dob} onChange={setDob} />
 
           <label className="field-label" style={{ marginTop: 14 }}>Life expectancy</label>
           <div className="range-row">

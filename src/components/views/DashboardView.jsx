@@ -37,7 +37,8 @@ export default function DashboardView() {
   if (!life) return <p>Check your birth date in the profile.</p>
 
   const rem = remainingBreakdown(life.msLeft)
-  const quote = QUOTES[life.daysLived % QUOTES.length]
+  // JS % is negative for negative dividends (bad dob data) — keep it in range.
+  const quote = QUOTES[((life.daysLived % QUOTES.length) + QUOTES.length) % QUOTES.length]
   const gone = life.msLeft <= 0
 
   // Year-scoped (annual / 5-year) goals are excluded from the kanban-style stats.

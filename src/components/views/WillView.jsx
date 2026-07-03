@@ -51,8 +51,9 @@ export default function WillView() {
             <div className="inline-form tight">
               <input className="field-input grow" placeholder="Executor" value={will.executor} onChange={(e) => setWill({ executor: e.target.value })} />
               <input className="field-input grow" placeholder="Guardian (if children)" value={will.guardian} onChange={(e) => setWill({ guardian: e.target.value })} />
-              <input className="field-input" type="date" title="Last updated" value={will.lastUpdated} onChange={(e) => setWill({ lastUpdated: e.target.value })} />
             </div>
+            <label className="field-label" htmlFor="will-updated">Last updated</label>
+            <input id="will-updated" className="field-input" type="date" value={will.lastUpdated} onChange={(e) => setWill({ lastUpdated: e.target.value })} />
           </div>
         )}
         {(will.hasWill === 'no' || will.hasWill === 'unsure') && (

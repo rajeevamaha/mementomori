@@ -1,12 +1,15 @@
 // Local Claude proxy for the "Death" life coach.
 //
-// The browser must never hold the Anthropic API key, so this small Express
-// server holds it (from ANTHROPIC_API_KEY) and runs the Claude tool-use loop.
-// Death can update the user's plan (goals, finances, family, legacy, profile)
-// via tools — the tools execute CLIENT-SIDE against the app's local store, so
-// this server is stateless per turn: it streams text + emits the model's
-// tool-call requests as NDJSON, the browser executes them and sends results
-// back for the next turn.
+// The browser must never hold the API keys, so this small Express server holds
+// them (ANTHROPIC_API_KEY, optional GROQ_API_KEY) and runs the tool-use loop.
+// Anthropic is the primary provider; if a Claude call fails (rate limit,
+// credits, auth, overload, network) the same turn is transparently retried on
+// Groq's OpenAI-compatible API — the NDJSON protocol the browser sees is
+// identical either way. Death can update the user's plan (goals, finances,
+// family, legacy, profile) via tools — the tools execute CLIENT-SIDE against
+// the app's local store, so this server is stateless per turn: it streams text
+// + emits the model's tool-call requests as NDJSON, the browser executes them
+// and sends results back for the next turn.
 //
 // Run with `npm run dev` (alongside Vite) or `node server/index.mjs`.
 
@@ -18,11 +21,16 @@ const PORT = process.env.MBD_API_PORT || 8787
 // Per the Claude API guidance, default to the most capable model. Override with
 // MBD_COACH_MODEL (e.g. claude-sonnet-4-6 for lower cost / latency).
 const MODEL = process.env.MBD_COACH_MODEL || 'claude-opus-4-8'
+// Groq fallback (free tier) — called with plain fetch(), no SDK needed.
+const GROQ_MODEL = process.env.MBD_GROQ_MODEL || 'llama-3.3-70b-versatile'
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const MAX_TOKENS = 2048
 
 const app = express()
 app.use(express.json({ limit: '2mb' }))
 
 const hasKey = !!process.env.ANTHROPIC_API_KEY
+const hasGroqKey = !!process.env.GROQ_API_KEY
 const client = hasKey ? new Anthropic() : null
 
 // ---- Tools Death can use to update the user's plan (executed client-side) ----
@@ -153,8 +161,228 @@ const TOOLS = [
 ]
 
 app.get('/api/coach/health', (_req, res) => {
-  res.json({ ok: hasKey, model: hasKey ? MODEL : null })
+  res.json({
+    ok: hasKey || hasGroqKey,
+    // The primary model this server will try first.
+    model: hasKey ? MODEL : hasGroqKey ? GROQ_MODEL : null,
+    providers: { anthropic: hasKey, groq: hasGroqKey },
+  })
 })
+
+// ---- Anthropic <-> OpenAI (Groq) translation layer -------------------------
+// Exported so tests can import them (set MBD_NO_LISTEN=1 to skip binding).
+
+// tool_result content may be a string, an array of content blocks, or absent.
+function toolResultText(content) {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.map((b) => (b?.type === 'text' ? b.text : JSON.stringify(b))).join('\n')
+  }
+  if (content == null) return ''
+  return typeof content === 'object' ? JSON.stringify(content) : String(content)
+}
+
+// Trim the conversation to the last `budget` messages without starting the
+// window mid-turn: the Anthropic API rejects a history whose first message is
+// an assistant turn, and a leading tool_result whose paired tool_use was cut
+// off is equally invalid. If the window holds no plain user turn at all (very
+// long tool loops), fall back to slicing from the last plain user turn in the
+// full conversation — the client pushes one every turn, so it exists.
+export function trimHistory(messages, budget = 30) {
+  const isPlainUserTurn = (m) => m && m.role === 'user' && typeof m.content === 'string'
+  const window = messages.slice(-budget)
+  const first = window.findIndex(isPlainUserTurn)
+  if (first === 0) return window
+  if (first > 0) return window.slice(first)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isPlainUserTurn(messages[i])) return messages.slice(i)
+  }
+  return window
+}
+
+// Convert the Anthropic-format conversation the client sends into OpenAI chat
+// format. thinking/redacted_thinking blocks are dropped entirely.
+export function anthropicMessagesToOpenAI(messages, systemPrompt) {
+  const out = [{ role: 'system', content: systemPrompt }]
+  for (const msg of messages || []) {
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        out.push({ role: 'user', content: msg.content })
+        continue
+      }
+      // Array content: tool_result blocks become one `tool` message each
+      // (order preserved); any text blocks trail as a user message.
+      const texts = []
+      for (const block of msg.content || []) {
+        if (block.type === 'tool_result') {
+          out.push({ role: 'tool', tool_call_id: block.tool_use_id, content: toolResultText(block.content) })
+        } else if (block.type === 'text') {
+          texts.push(block.text)
+        }
+      }
+      if (texts.length) out.push({ role: 'user', content: texts.join('\n') })
+    } else if (msg.role === 'assistant') {
+      if (typeof msg.content === 'string') {
+        out.push({ role: 'assistant', content: msg.content })
+        continue
+      }
+      const texts = []
+      const toolCalls = []
+      for (const block of msg.content || []) {
+        if (block.type === 'text') {
+          texts.push(block.text)
+        } else if (block.type === 'tool_use') {
+          toolCalls.push({
+            id: block.id,
+            type: 'function',
+            function: { name: block.name, arguments: JSON.stringify(block.input ?? {}) },
+          })
+        }
+        // thinking / redacted_thinking: dropped
+      }
+      const m = { role: 'assistant', content: texts.length ? texts.join('') : null }
+      if (toolCalls.length) m.tool_calls = toolCalls
+      out.push(m)
+    }
+  }
+  return out
+}
+
+export function anthropicToolsToOpenAI(tools) {
+  return (tools || []).map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema },
+  }))
+}
+
+export function openAIFinishToStopReason(finishReason) {
+  if (finishReason === 'tool_calls') return 'tool_use'
+  if (finishReason === 'length') return 'max_tokens'
+  return 'end_turn'
+}
+
+// Stream one chat completion from Groq (SSE over fetch). Calls onText(delta)
+// for each text delta and returns an Anthropic-shaped { content, stop_reason }.
+async function streamGroqChat({ messages, tools, onText }) {
+  const resp = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+      tools: tools && tools.length ? tools : undefined,
+      max_tokens: MAX_TOKENS,
+      stream: true,
+    }),
+  })
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '')
+    const err = new Error(`Groq HTTP ${resp.status}: ${body.slice(0, 300) || resp.statusText}`)
+    err.status = resp.status
+    throw err
+  }
+
+  let text = ''
+  const toolCalls = [] // accumulated by delta index
+  let finishReason = null
+
+  const handleLine = (line) => {
+    if (!line.startsWith('data:')) return
+    const data = line.slice(5).trim()
+    if (data === '[DONE]') return
+    let parsed
+    try {
+      parsed = JSON.parse(data)
+    } catch {
+      return
+    }
+    // Be defensive about multiple choices — we only ever use choices[0].
+    const choice = parsed.choices && parsed.choices[0]
+    if (!choice) return
+    const delta = choice.delta || {}
+    if (typeof delta.content === 'string' && delta.content) {
+      text += delta.content
+      onText(delta.content)
+    }
+    if (Array.isArray(delta.tool_calls)) {
+      for (const tc of delta.tool_calls) {
+        const i = tc.index ?? 0
+        if (!toolCalls[i]) toolCalls[i] = { id: null, name: null, args: '' }
+        // id + function.name arrive on the first delta for an index;
+        // function.arguments arrives as string fragments to concatenate.
+        if (tc.id) toolCalls[i].id = tc.id
+        if (tc.function?.name) toolCalls[i].name = tc.function.name
+        if (typeof tc.function?.arguments === 'string') toolCalls[i].args += tc.function.arguments
+      }
+    }
+    if (choice.finish_reason) finishReason = choice.finish_reason
+  }
+
+  const reader = resp.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  let done = false
+  while (!done) {
+    const chunk = await reader.read()
+    done = chunk.done
+    if (chunk.value) buf += dec.decode(chunk.value, { stream: !done })
+    let nl
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      handleLine(line)
+    }
+  }
+  // Flush the decoder and process a final unterminated line (a truncated
+  // stream would otherwise silently lose its last delta / finish_reason).
+  buf += dec.decode()
+  const tail = buf.trim()
+  if (tail) handleLine(tail)
+
+  // Build a final Anthropic-format content array.
+  const content = []
+  if (text) content.push({ type: 'text', text })
+  toolCalls.forEach((tc, i) => {
+    if (!tc) return
+    let input = {}
+    if (tc.args) {
+      try {
+        input = JSON.parse(tc.args)
+      } catch (e) {
+        console.error(`[coach] groq tool_call args parse failed (${tc.name}): ${e.message}`)
+      }
+    }
+    content.push({
+      type: 'tool_use',
+      id: tc.id || `call_${Date.now()}_${i}`,
+      name: tc.name || 'unknown_tool',
+      input,
+    })
+  })
+
+  // Llama can end a tool-call stream with finish_reason 'stop'; if any
+  // tool_use made it into the content, the client MUST run the tool loop or
+  // the dangling tool_use poisons the next turn on both providers.
+  const hasToolUse = content.some((b) => b.type === 'tool_use')
+  return { content, stop_reason: hasToolUse ? 'tool_use' : openAIFinishToStopReason(finishReason) }
+}
+
+// ---- Anthropic cooldown -----------------------------------------------------
+// After an Anthropic failure we skip straight to Groq for a while; a successful
+// Anthropic call clears it.
+let anthropicCooldownUntil = 0
+
+function anthropicCooldownMs(err) {
+  const status = err?.status
+  if (status === 401 || status === 403) return 10 * 60 * 1000 // auth — 10 min
+  if (status === 429) return 5 * 60 * 1000 // rate limit — 5 min
+  if (/credit|billing|quota/i.test(String(err?.message || ''))) return 30 * 60 * 1000 // 30 min
+  return 60 * 1000 // 5xx / 529 overloaded / network — 60 s
+}
 
 function buildSystemPrompt(context = {}) {
   const { profile = {}, life = {}, goals = [], finance = {}, family = [] } = context
@@ -228,10 +456,13 @@ Speak in the first person as Death, but keep the focus entirely on helping them 
 
 // Each turn: stream text + emit final content (incl. tool_use blocks) as NDJSON.
 // The browser executes any tools and calls back with tool_result blocks.
+// Anthropic is tried first; on any Anthropic error (before anything has been
+// streamed) the same turn falls through to Groq.
 app.post('/api/coach/chat', async (req, res) => {
-  if (!client) {
+  if (!client && !hasGroqKey) {
     res.status(503).json({
-      error: 'No ANTHROPIC_API_KEY set. Add it to a .env file in the project root and restart.',
+      error:
+        'No API key set. Add ANTHROPIC_API_KEY or GROQ_API_KEY to a .env file in the project root and restart.',
     })
     return
   }
@@ -246,33 +477,98 @@ app.post('/api/coach/chat', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache')
   const send = (obj) => res.write(JSON.stringify(obj) + '\n')
 
-  try {
-    const stream = client.messages.stream({
-      model: MODEL,
-      max_tokens: 2048,
-      thinking: { type: 'adaptive' },
-      system: buildSystemPrompt(context),
-      tools: TOOLS,
-      messages: messages.slice(-30),
-    })
+  // Shared by both providers: once any text delta has gone to the client we
+  // must not switch providers mid-turn (no double-streaming).
+  let streamedAny = false
+  const emitText = (delta) => {
+    streamedAny = true
+    send({ type: 'text', text: delta })
+  }
 
-    stream.on('text', (delta) => send({ type: 'text', text: delta }))
-    const final = await stream.finalMessage()
-    // Pass the full content array back so the client can append it verbatim
-    // (preserves thinking + tool_use blocks for the next turn).
-    send({ type: 'final', content: final.content, stop_reason: final.stop_reason })
+  const systemPrompt = buildSystemPrompt(context)
+  const turnMessages = trimHistory(messages)
+
+  const coolingDown = client && Date.now() < anthropicCooldownUntil
+  if (coolingDown && hasGroqKey) {
+    console.warn(
+      `[coach] anthropic cooling down (${Math.ceil((anthropicCooldownUntil - Date.now()) / 1000)}s left) — using groq`
+    )
+  }
+
+  if (client && (!coolingDown || !hasGroqKey)) {
+    try {
+      const stream = client.messages.stream({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        thinking: { type: 'adaptive' },
+        system: systemPrompt,
+        tools: TOOLS,
+        messages: turnMessages,
+      })
+
+      stream.on('text', emitText)
+      const final = await stream.finalMessage()
+      anthropicCooldownUntil = 0 // success clears any cooldown
+      // Pass the full content array back so the client can append it verbatim
+      // (preserves thinking + tool_use blocks for the next turn).
+      send({
+        type: 'final',
+        content: final.content,
+        stop_reason: final.stop_reason,
+        provider: 'anthropic',
+        model: MODEL,
+      })
+      res.end()
+      return
+    } catch (err) {
+      // A 400 is a request-shape problem, not a provider outage — don't
+      // disable Anthropic globally for it (but still try Groq for this turn).
+      const ms = err?.status === 400 ? 0 : anthropicCooldownMs(err)
+      if (ms) anthropicCooldownUntil = Date.now() + ms
+      console.error(
+        `[coach] anthropic error (status ${err?.status ?? 'network'}): ${err?.message || err}` +
+          (ms ? ` — cooldown ${Math.round(ms / 1000)}s` : ' — no cooldown (request error)')
+      )
+      if (!hasGroqKey || streamedAny) {
+        // No fallback available, or we already streamed text — fail as before.
+        if (!res.headersSent) res.status(500)
+        send({ type: 'error', error: err?.message || 'unknown error' })
+        res.end()
+        return
+      }
+      console.warn('[coach] falling back to groq for this turn')
+    }
+  }
+
+  // Groq path (fallback, or primary when no Anthropic key / cooling down).
+  try {
+    const { content, stop_reason } = await streamGroqChat({
+      messages: anthropicMessagesToOpenAI(turnMessages, systemPrompt),
+      tools: anthropicToolsToOpenAI(TOOLS),
+      onText: emitText,
+    })
+    send({ type: 'final', content, stop_reason, provider: 'groq', model: GROQ_MODEL })
     res.end()
   } catch (err) {
-    console.error('[coach] error:', err?.message || err)
+    console.error('[coach] groq error:', err?.message || err)
     if (!res.headersSent) res.status(500)
     send({ type: 'error', error: err?.message || 'unknown error' })
     res.end()
   }
 })
 
-app.listen(PORT, () => {
-  console.log(
-    `[coach] Death is listening on http://localhost:${PORT} ` +
-      (hasKey ? `(model: ${MODEL}, ${TOOLS.length} tools)` : '(NO API KEY — set ANTHROPIC_API_KEY in .env)')
-  )
-})
+// MBD_NO_LISTEN lets tests import the translation helpers without binding the port.
+if (!process.env.MBD_NO_LISTEN) {
+  app.listen(PORT, () => {
+    const providers = [
+      hasKey ? `anthropic: ${MODEL}` : null,
+      hasGroqKey ? `groq: ${GROQ_MODEL}${hasKey ? ' (fallback)' : ''}` : null,
+    ].filter(Boolean)
+    console.log(
+      `[coach] Death is listening on http://localhost:${PORT} ` +
+        (providers.length
+          ? `(${providers.join(', ')} — ${TOOLS.length} tools)`
+          : '(NO API KEY — set ANTHROPIC_API_KEY or GROQ_API_KEY in .env)')
+    )
+  })
+}

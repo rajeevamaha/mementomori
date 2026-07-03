@@ -68,13 +68,20 @@ tool-use loop and emits tool calls as NDJSON; the browser executes them against
 the local Zustand store and sends results back, so Death can add/move/remove
 goals, log assets & liabilities, set a retirement target, add family members and
 milestones, write Legacy entries, edit your profile, and navigate sections —
-all without leaving the chat. Without `ANTHROPIC_API_KEY` the dock shows a
-friendly "add a key" state and the rest of the app is unaffected.
+all without leaving the chat.
 
-Override the model or port via `.env`:
+Anthropic is the primary provider. If a Claude call fails (rate limit, credits,
+overload) and `GROQ_API_KEY` is set, the proxy transparently retries the same
+turn on **Groq** — grab a free key at https://console.groq.com. With only a
+Groq key, the coach runs on Groq alone; the dock's status line shows whichever
+model answered. Without either key the dock shows a friendly "add a key" state
+and the rest of the app is unaffected.
+
+Override the models or port via `.env`:
 
 ```
 MBD_COACH_MODEL=claude-sonnet-4-6   # cheaper/faster than the default opus-4-8
+MBD_GROQ_MODEL=llama-3.3-70b-versatile   # the Groq fallback model
 MBD_API_PORT=8787
 ```
 
