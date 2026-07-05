@@ -705,7 +705,7 @@ export async function chatHandler(req, res) {
       noteFailure('anthropic', err)
       if (streamedAny) {
         // Already streamed partial text — can't cleanly switch. Close in-voice.
-        send({ type: 'final', ...speak('\n\n— my voice caught for a moment. Ask me again.'), provider: 'system' })
+        send({ type: 'final', ...speak('My voice caught for a moment. Ask me again.'), provider: 'system' })
         res.end()
         return
       }
@@ -730,7 +730,7 @@ export async function chatHandler(req, res) {
     } catch (err) {
       noteFailure(provider.label, err)
       if (streamedAny) {
-        send({ type: 'final', ...speak('\n\n— the connection wavered. Speak to me again.'), provider: 'system' })
+        send({ type: 'final', ...speak('The connection wavered. Speak to me again.'), provider: 'system' })
         res.end()
         return
       }
