@@ -18,15 +18,44 @@
 // and sends results back for the next turn.
 
 import Anthropic from '@anthropic-ai/sdk'
+import { getSessionUser } from './auth.mjs'
+import { checkRate } from './ratelimit.mjs'
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MAX_TOKENS = 2048
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// Rate limits (per rolling day). Guests are keyed by IP, signed-in users by id.
+const guestPerDay = () => Number(process.env.MBD_RATE_GUEST_PER_DAY) || 12
+const userPerDay = () => Number(process.env.MBD_RATE_USER_PER_DAY) || 120
+
+// Every failure the user could see is spoken in Death's own voice — a rate
+// limit, a dead provider, a missing key. The illusion of speaking with Death
+// must survive the plumbing breaking. index varies the line without RNG.
+const RESTING_LINES = [
+  'Even I must rest between souls. You have spoken your fill for now — return when the day turns, and we will weigh your hours again.',
+  'Enough for today. The dead are patient; so must you be. Come back tomorrow and we will continue counting what remains.',
+  'You have leaned on me hard today. Go and live a little of what we discussed — then return, and I will still be here.',
+]
+const SILENCE_LINES = [
+  'The veil is thick just now — my voice cannot reach you. Wait a breath and speak to me again.',
+  'Something stands between us this moment. Try me once more shortly; I do not leave.',
+  'The connection to the far side wavers. Give it a moment, then ask me again — I am not going anywhere. Neither, yet, are you.',
+]
+const NO_KEY_LINE =
+  'I have no voice here yet — this world was raised without the means for me to speak. (Set ANTHROPIC_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY.) The rest of your reckoning still stands.'
+
+// A finished-turn content array carrying one line of Death's speech.
+const speak = (text) => ({ content: [{ type: 'text', text }], stop_reason: 'end_turn' })
+const pickLine = (lines) => lines[Math.floor(Date.now() / 1000) % lines.length]
 
 // Per the Claude API guidance, default to the most capable model. Override with
 // MBD_COACH_MODEL (e.g. claude-sonnet-4-6 for lower cost / latency).
 export const coachModel = () => process.env.MBD_COACH_MODEL || 'claude-opus-4-8'
 // Groq fallback (free tier) — called with plain fetch(), no SDK needed.
 export const groqModel = () => process.env.MBD_GROQ_MODEL || 'llama-3.3-70b-versatile'
+// OpenRouter fallback (aggregates many providers; near-free open models).
+export const openrouterModel = () =>
+  process.env.MBD_OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct'
 
 // Keys arrive by copy-paste (into .env or Vercel's env-var form) and often
 // carry stowaways — trailing newlines, quotes, or whole pasted sentences. A
@@ -35,8 +64,43 @@ export const groqModel = () => process.env.MBD_GROQ_MODEL || 'llama-3.3-70b-vers
 const cleanKey = (v) => (v || '').trim().replace(/^["']|["']$/g, '').split(/\s+/)[0] || ''
 const anthropicKey = () => cleanKey(process.env.ANTHROPIC_API_KEY)
 const groqKey = () => cleanKey(process.env.GROQ_API_KEY)
+const openrouterKey = () => cleanKey(process.env.OPENROUTER_API_KEY)
 const hasAnthropicKey = () => !!anthropicKey()
 const hasGroqKey = () => !!groqKey()
+const hasOpenrouterKey = () => !!openrouterKey()
+
+// The ordered chain of OpenAI-compatible fallback providers, filtered to those
+// with a key. Each is tried in turn after Anthropic (and after each other) so a
+// 429/outage on one silently rolls to the next — the "never-fail" stack. All
+// speak the same OpenAI chat protocol, so one streamer (streamOpenAICompat)
+// serves them; only url/key/model/headers differ.
+function openAIProviders() {
+  const list = []
+  if (hasGroqKey()) {
+    list.push({
+      label: 'groq',
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      key: groqKey(),
+      model: groqModel(),
+      headers: {},
+    })
+  }
+  if (hasOpenrouterKey()) {
+    list.push({
+      label: 'openrouter',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      key: openrouterKey(),
+      model: openrouterModel(),
+      // OpenRouter asks callers to identify the app (used for its dashboards
+      // and free-tier routing); harmless if omitted.
+      headers: {
+        'HTTP-Referer': process.env.MBD_PUBLIC_URL || 'https://thefinalcalendar.com',
+        'X-Title': 'Motivation by Death',
+      },
+    })
+  }
+  return list
+}
 
 let _client = null
 function anthropicClient() {
@@ -277,17 +341,19 @@ export function openAIFinishToStopReason(finishReason) {
   return 'end_turn'
 }
 
-// Stream one chat completion from Groq (SSE over fetch). Calls onText(delta)
-// for each text delta and returns an Anthropic-shaped { content, stop_reason }.
-async function streamGroqChat({ messages, tools, onText }) {
-  const resp = await fetch(GROQ_API_URL, {
+// Stream one chat completion from any OpenAI-compatible provider (Groq,
+// OpenRouter, …) over SSE. Calls onText(delta) for each text delta and returns
+// an Anthropic-shaped { content, stop_reason }.
+async function streamOpenAICompat(provider, { messages, tools, onText }) {
+  const resp = await fetch(provider.url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${groqKey()}`,
+      Authorization: `Bearer ${provider.key}`,
+      ...(provider.headers || {}),
     },
     body: JSON.stringify({
-      model: groqModel(),
+      model: provider.model,
       messages,
       tools: tools && tools.length ? tools : undefined,
       max_tokens: MAX_TOKENS,
@@ -297,7 +363,7 @@ async function streamGroqChat({ messages, tools, onText }) {
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => '')
-    const err = new Error(`Groq HTTP ${resp.status}: ${body.slice(0, 300) || resp.statusText}`)
+    const err = new Error(`${provider.label} HTTP ${resp.status}: ${body.slice(0, 300) || resp.statusText}`)
     err.status = resp.status
     throw err
   }
@@ -408,18 +474,56 @@ async function streamGroqChat({ messages, tools, onText }) {
   return { content, stop_reason: hasToolUse ? 'tool_use' : openAIFinishToStopReason(finishReason) }
 }
 
-// ---- Anthropic cooldown -----------------------------------------------------
-// After an Anthropic failure we skip straight to Groq for a while; a successful
-// Anthropic call clears it. Module state: per-process locally, per warm
-// instance on Vercel — a cold start just means one extra Anthropic attempt.
-let anthropicCooldownUntil = 0
+// ---- Provider cooldowns -----------------------------------------------------
+// After a provider fails we skip it for a while and try the next in the chain; a
+// success clears its cooldown. Keyed by provider label ('anthropic','groq',
+// 'openrouter'). Module state: per-process locally, per warm instance on Vercel
+// — a cold start just means one extra attempt at a cooling-down provider.
+const cooldownUntil = {}
+const isCoolingDown = (label) => Date.now() < (cooldownUntil[label] || 0)
+const clearCooldown = (label) => {
+  cooldownUntil[label] = 0
+}
 
-function anthropicCooldownMs(err) {
+function cooldownMs(err) {
   const status = err?.status
   if (status === 401 || status === 403) return 10 * 60 * 1000 // auth — 10 min
   if (status === 429) return 5 * 60 * 1000 // rate limit — 5 min
   if (/credit|billing|quota/i.test(String(err?.message || ''))) return 30 * 60 * 1000 // 30 min
   return 60 * 1000 // 5xx / 529 overloaded / network — 60 s
+}
+
+function noteFailure(label, err) {
+  // A 400 is a request-shape bug, not an outage — don't sideline the provider.
+  const ms = err?.status === 400 ? 0 : cooldownMs(err)
+  if (ms) cooldownUntil[label] = Date.now() + ms
+  console.error(
+    `[coach] ${label} error (status ${err?.status ?? 'network'}): ${err?.message || err}` +
+      (ms ? ` — cooldown ${Math.round(ms / 1000)}s` : ' — no cooldown (request error)')
+  )
+}
+
+// The rate-limit identity for this request: a signed-in user (higher cap) or
+// the caller's IP (guest cap). Returns { bucket, limit } or null to skip.
+async function rateIdentity(req) {
+  try {
+    const user = await getSessionUser(req)
+    if (user) return { bucket: `coach:u:${user.id}`, limit: userPerDay() }
+  } catch {
+    /* accounts unavailable — fall through to IP */
+  }
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
+    .split(',')[0]
+    .trim()
+  return { bucket: `coach:ip:${ip}`, limit: guestPerDay() }
+}
+
+// Only a fresh user turn (a plain-string user message at the tail) counts
+// against the limit — tool-loop continuations (array content w/ tool_result)
+// are part of the same turn and must not each burn a request.
+function isFreshUserTurn(messages) {
+  const last = messages[messages.length - 1]
+  return last && last.role === 'user' && typeof last.content === 'string'
 }
 
 export function buildSystemPrompt(context = {}) {
@@ -503,11 +607,21 @@ Speak in the first person as Death, but keep the focus entirely on helping them 
 // ---- HTTP handlers (Express- and Vercel-compatible) -------------------------
 
 export function coachHealth() {
+  const openai = openAIProviders()
+  const primary = hasAnthropicKey()
+    ? coachModel()
+    : openai.length
+      ? openai[0].model
+      : null
   return {
-    ok: hasAnthropicKey() || hasGroqKey(),
-    // The primary model this server will try first.
-    model: hasAnthropicKey() ? coachModel() : hasGroqKey() ? groqModel() : null,
-    providers: { anthropic: hasAnthropicKey(), groq: hasGroqKey() },
+    ok: hasAnthropicKey() || openai.length > 0,
+    // The model this server will try first.
+    model: primary,
+    providers: {
+      anthropic: hasAnthropicKey(),
+      groq: hasGroqKey(),
+      openrouter: hasOpenrouterKey(),
+    },
   }
 }
 
@@ -516,19 +630,14 @@ export function healthHandler(_req, res) {
 }
 
 // Each turn: stream text + emit final content (incl. tool_use blocks) as NDJSON.
-// The browser executes any tools and calls back with tool_result blocks.
-// Anthropic is tried first; on any Anthropic error (before anything has been
-// streamed) the same turn falls through to Groq.
+// The browser executes any tools and calls back with tool_result blocks. The
+// provider chain is Anthropic → Groq → OpenRouter; a failure or cooldown on one
+// rolls to the next. If none can answer, Death still speaks a line — the user
+// never sees a raw error.
 export async function chatHandler(req, res) {
   const client = anthropicClient()
-  if (!client && !hasGroqKey()) {
-    res.status(503).json({
-      error:
-        'No API key set. Add ANTHROPIC_API_KEY or GROQ_API_KEY to .env locally, ' +
-        'or to Project Settings → Environment Variables on Vercel (then redeploy).',
-    })
-    return
-  }
+  const openai = openAIProviders()
+  const anyProvider = !!client || openai.length > 0
 
   const { messages = [], context = {} } = req.body || {}
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -539,9 +648,33 @@ export async function chatHandler(req, res) {
   res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache')
   const send = (obj) => res.write(JSON.stringify(obj) + '\n')
+  // Emit a complete, in-character turn (used for every graceful failure). No
+  // `model` field, so the dock's status line keeps the last real model rather
+  // than flashing a placeholder on a failure turn.
+  const sendSpoken = (text) => {
+    send({ type: 'final', ...speak(text), provider: 'system' })
+    res.end()
+  }
 
-  // Shared by both providers: once any text delta has gone to the client we
-  // must not switch providers mid-turn (no double-streaming).
+  if (!anyProvider) {
+    sendSpoken(NO_KEY_LINE)
+    return
+  }
+
+  // Rate limit — only a fresh user turn counts (tool-loop continuations don't).
+  if (isFreshUserTurn(messages)) {
+    const id = await rateIdentity(req)
+    if (id) {
+      const { allowed } = await checkRate(id.bucket, id.limit, DAY_MS)
+      if (!allowed) {
+        console.warn(`[coach] rate limit hit for ${id.bucket} (${id.limit}/day)`)
+        sendSpoken(pickLine(RESTING_LINES))
+        return
+      }
+    }
+  }
+
+  // Once any text delta has gone out we must not switch providers mid-turn.
   let streamedAny = false
   const emitText = (delta) => {
     streamedAny = true
@@ -551,14 +684,8 @@ export async function chatHandler(req, res) {
   const systemPrompt = buildSystemPrompt(context)
   const turnMessages = trimHistory(messages)
 
-  const coolingDown = client && Date.now() < anthropicCooldownUntil
-  if (coolingDown && hasGroqKey()) {
-    console.warn(
-      `[coach] anthropic cooling down (${Math.ceil((anthropicCooldownUntil - Date.now()) / 1000)}s left) — using groq`
-    )
-  }
-
-  if (client && (!coolingDown || !hasGroqKey())) {
+  // 1) Anthropic (unless no key / cooling down).
+  if (client && !isCoolingDown('anthropic')) {
     try {
       const stream = client.messages.stream({
         model: coachModel(),
@@ -568,52 +695,50 @@ export async function chatHandler(req, res) {
         tools: TOOLS,
         messages: turnMessages,
       })
-
       stream.on('text', emitText)
       const final = await stream.finalMessage()
-      anthropicCooldownUntil = 0 // success clears any cooldown
-      // Pass the full content array back so the client can append it verbatim
-      // (preserves thinking + tool_use blocks for the next turn).
-      send({
-        type: 'final',
-        content: final.content,
-        stop_reason: final.stop_reason,
-        provider: 'anthropic',
-        model: coachModel(),
-      })
+      clearCooldown('anthropic')
+      send({ type: 'final', content: final.content, stop_reason: final.stop_reason, provider: 'anthropic', model: coachModel() })
       res.end()
       return
     } catch (err) {
-      // A 400 is a request-shape problem, not a provider outage — don't
-      // disable Anthropic globally for it (but still try Groq for this turn).
-      const ms = err?.status === 400 ? 0 : anthropicCooldownMs(err)
-      if (ms) anthropicCooldownUntil = Date.now() + ms
-      console.error(
-        `[coach] anthropic error (status ${err?.status ?? 'network'}): ${err?.message || err}` +
-          (ms ? ` — cooldown ${Math.round(ms / 1000)}s` : ' — no cooldown (request error)')
-      )
-      if (!hasGroqKey() || streamedAny) {
-        // No fallback available, or we already streamed text — fail as before.
-        send({ type: 'error', error: err?.message || 'unknown error' })
+      noteFailure('anthropic', err)
+      if (streamedAny) {
+        // Already streamed partial text — can't cleanly switch. Close in-voice.
+        send({ type: 'final', ...speak('\n\n— my voice caught for a moment. Ask me again.'), provider: 'system' })
         res.end()
         return
       }
-      console.warn('[coach] falling back to groq for this turn')
     }
   }
 
-  // Groq path (fallback, or primary when no Anthropic key / cooling down).
-  try {
-    const { content, stop_reason } = await streamGroqChat({
-      messages: anthropicMessagesToOpenAI(turnMessages, systemPrompt),
-      tools: anthropicToolsToOpenAI(TOOLS),
-      onText: emitText,
-    })
-    send({ type: 'final', content, stop_reason, provider: 'groq', model: groqModel() })
-    res.end()
-  } catch (err) {
-    console.error('[coach] groq error:', err?.message || err)
-    send({ type: 'error', error: err?.message || 'unknown error' })
-    res.end()
+  // 2) OpenAI-compatible chain (Groq, then OpenRouter), skipping cooling-down.
+  const oaMessages = anthropicMessagesToOpenAI(turnMessages, systemPrompt)
+  const oaTools = anthropicToolsToOpenAI(TOOLS)
+  for (const provider of openai) {
+    if (isCoolingDown(provider.label)) continue
+    try {
+      const { content, stop_reason } = await streamOpenAICompat(provider, {
+        messages: oaMessages,
+        tools: oaTools,
+        onText: emitText,
+      })
+      clearCooldown(provider.label)
+      send({ type: 'final', content, stop_reason, provider: provider.label, model: provider.model })
+      res.end()
+      return
+    } catch (err) {
+      noteFailure(provider.label, err)
+      if (streamedAny) {
+        send({ type: 'final', ...speak('\n\n— the connection wavered. Speak to me again.'), provider: 'system' })
+        res.end()
+        return
+      }
+      // else: try the next provider in the chain
+    }
   }
+
+  // 3) Everything failed (or all cooling down) and nothing streamed — Death
+  // still speaks, so the app never shows a broken state.
+  sendSpoken(pickLine(SILENCE_LINES))
 }

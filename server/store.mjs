@@ -66,6 +66,11 @@ async function pool() {
         convo JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+      CREATE TABLE IF NOT EXISTS mbd_rate (
+        bucket TEXT PRIMARY KEY,
+        count INTEGER NOT NULL,
+        reset_at BIGINT NOT NULL
+      );
     `)
     // A transient failure (e.g. serverless PG waking from scale-to-zero) must
     // not brick the warm instance — clear the cache so the next call retries.
@@ -230,4 +235,15 @@ export function storeUnavailableMessage() {
     'Accounts need a database. On Vercel: create one under Storage → Postgres ' +
     '(or Neon) and connect it to this project so POSTGRES_URL is set, then redeploy.'
   )
+}
+
+// True when a Postgres backend is configured (used by the rate limiter to pick
+// a cross-instance store vs. a per-instance in-memory fallback).
+export const hasPg = () => !!PG_URL()
+
+// Run a raw parameterized query against the (table-initialized) pool. Only used
+// by the rate limiter for its atomic upsert. Throws if no Postgres is set.
+export async function pgQuery(sql, params) {
+  if (!PG_URL()) throw new Error('pgQuery called without POSTGRES_URL')
+  return (await pool()).query(sql, params)
 }

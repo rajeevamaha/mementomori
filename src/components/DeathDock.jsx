@@ -212,9 +212,9 @@ export default function DeathDock() {
       let bubbleBase = '' // text settled by finished rounds of this turn
       while (guard++ < 6) {
         const final = await streamTurn()
-        // A stream that ends without a final event was cut off (server killed
-        // mid-reply, e.g. a serverless timeout) — surface it, don't go silent.
-        if (!final) throw new Error('The thread was cut mid-reply. Ask me again.')
+        // A stream that ended without a final event was cut off (e.g. a
+        // serverless timeout). Speak it in Death's voice, never go silent.
+        if (!final) throw new Error('The thread between us was cut short. Speak to me again.')
         // Replace the streamed deltas with the settled text from `final` — the
         // server may have stripped tool-call markup Llama wrote into the text.
         bubbleBase += (final.content || [])
@@ -237,7 +237,15 @@ export default function DeathDock() {
         // loop: Death continues after seeing the tool results
       }
     } catch (err) {
-      pushText((display.length ? '\n\n' : '') + `⚠ ${err.message}`)
+      // The server speaks its own failures in-character; this catch only fires
+      // on a network drop or a cut stream. Keep the illusion — Death's voice,
+      // not a stack trace (the raw cause still goes to the console).
+      console.warn('[dock] turn failed:', err?.message || err)
+      const line =
+        err?.message && /cut short/i.test(err.message)
+          ? err.message
+          : 'The veil closed between us for a moment. Try me again.'
+      pushText((display.length ? '\n\n' : '') + line)
     } finally {
       setBusy(false)
       // Next tick: displayRef has synced with the final bubble state by then.

@@ -53,14 +53,25 @@ both locally (Express) and on Vercel (serverless functions in `api/`)**.
   **Framer Motion** for animation. No router — a `view` string in the store
   switches screens.
 - **Server core (shared by Express + Vercel):**
-  - `server/coach.mjs` — Death coach: Anthropic primary → automatic Groq
-    fallback (OpenAI-compat translation layer), NDJSON streaming, salvage of
-    Llama's text-format tool calls, pasted-key sanitization (first token only).
+  - `server/coach.mjs` — Death coach with a **never-fail provider chain**:
+    Anthropic → Groq → OpenRouter (each with its own cooldown; the two
+    OpenAI-compat providers share one `streamOpenAICompat` + translation layer).
+    NDJSON streaming, salvage of Llama's text-format tool calls, pasted-key
+    sanitization. **Every user-visible failure speaks in Death's voice** —
+    rate limit ("I must rest"), all-providers-down ("the veil is thick"),
+    no-key — never a raw error (see RESTING/SILENCE/NO_KEY lines). Coach is
+    rate-limited (guests by IP, users by id) via `server/ratelimit.mjs`; only a
+    fresh user turn counts, not tool-loop continuations.
+  - `server/ratelimit.mjs` — fixed-window limiter: atomic Postgres upsert
+    (cross-instance) when POSTGRES_URL set, else in-memory. Fails OPEN.
   - `server/auth.mjs` — accounts: scrypt passwords, HMAC-signed HttpOnly
-    session cookie (`mbd_session`, 30d), Google OAuth code flow (activates when
-    GOOGLE_CLIENT_ID/SECRET set), per-user `/api/state` + `/api/convo` sync.
+    session cookie (`mbd_session`, 30d, version-stamped from the password hash
+    so a password change revokes old sessions), Google OAuth code flow with a
+    per-flow nonce-cookie CSRF binding + verified-email requirement, per-user
+    `/api/state` + `/api/convo` sync. All handlers wrapped in `safe()`.
   - `server/store.mjs` — storage: Postgres when POSTGRES_URL set (prod), JSON
     files under `.data/` locally, cleanly "unavailable" on Vercel without a DB.
+    Tables: mbd_users/state/convo/rate.
   - `server/index.mjs` — just the local Express wiring (port 8787).
   - `api/**/*.mjs` — Vercel functions re-exporting the same handlers.
 - **Accounts are optional:** guests stay 100% device-local (as before). Signing
@@ -220,9 +231,15 @@ README → "Deploying on Vercel".
 
 - **User provisions prod accounts** (see §8): Vercel Postgres + AUTH_SECRET,
   optional Google OAuth client. Code is deployed and waits on env vars.
+- **Public-demo hardening shipped 2026-07-05** (thefinalcalendar.com): OpenRouter
+  as a 3rd failover tier, per-IP/per-user rate limiting, in-character failure
+  messages. To go live the user should: add `OPENROUTER_API_KEY` (cheap/free
+  fallback for scale), tune `MBD_RATE_GUEST_PER_DAY`/`MBD_RATE_USER_PER_DAY`,
+  and (for cross-instance limits) have Postgres set. See README "Opening the
+  demo to the public".
 - **Groq free tier is 100k tokens/day** — the system prompt is ~2.5k/turn, so
-  heavy use exhausts it (hit on 2026-07-03). Real fix: Anthropic credits, or a
-  smaller Groq prompt / cheaper primary.
+  heavy use exhausts it (hit on 2026-07-03). Real fix: Anthropic credits,
+  OpenRouter, or a smaller prompt. The chain now degrades gracefully regardless.
 - **Anthropic account has no credits** (calls 400 with "credit balance too
   low") — the coach currently runs on Groq fallback only. User should top up.
 - The "self-improving Death" design (per-user memory extraction + cross-user

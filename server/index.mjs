@@ -5,7 +5,7 @@
 
 import 'dotenv/config'
 import express from 'express'
-import { healthHandler, chatHandler, coachHealth, coachModel, groqModel, TOOLS } from './coach.mjs'
+import { healthHandler, chatHandler, coachHealth, coachModel, groqModel, openrouterModel, TOOLS } from './coach.mjs'
 import {
   registerHandler,
   loginHandler,
@@ -41,15 +41,18 @@ app.all('/api/convo', convoHandler)
 if (!process.env.MBD_NO_LISTEN) {
   app.listen(PORT, () => {
     const h = coachHealth()
+    // Ordered by the actual failover chain: anthropic → groq → openrouter.
     const providers = [
       h.providers.anthropic ? `anthropic: ${coachModel()}` : null,
-      h.providers.groq ? `groq: ${groqModel()}${h.providers.anthropic ? ' (fallback)' : ''}` : null,
+      h.providers.groq ? `groq: ${groqModel()}` : null,
+      h.providers.openrouter ? `openrouter: ${openrouterModel()}` : null,
     ].filter(Boolean)
+    const chain = providers.length > 1 ? providers.join(' → ') : providers[0]
     console.log(
       `[coach] Death is listening on http://localhost:${PORT} ` +
         (providers.length
-          ? `(${providers.join(', ')} — ${TOOLS.length} tools)`
-          : '(NO API KEY — set ANTHROPIC_API_KEY or GROQ_API_KEY in .env)')
+          ? `(${chain} — ${TOOLS.length} tools)`
+          : '(NO API KEY — set ANTHROPIC_API_KEY, GROQ_API_KEY, or OPENROUTER_API_KEY in .env)')
     )
   })
 }

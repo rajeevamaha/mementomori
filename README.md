@@ -81,18 +81,26 @@ goals, log assets & liabilities, set a retirement target, add family members and
 milestones, write Legacy entries, edit your profile, and navigate sections —
 all without leaving the chat.
 
-Anthropic is the primary provider. If a Claude call fails (rate limit, credits,
-overload) and `GROQ_API_KEY` is set, the proxy transparently retries the same
-turn on **Groq** — grab a free key at https://console.groq.com. With only a
-Groq key, the coach runs on Groq alone; the dock's status line shows whichever
-model answered. Without either key the dock shows a friendly "add a key" state
-and the rest of the app is unaffected.
+**Never-fail provider chain.** The coach tries providers in order and rolls to
+the next on any failure (rate limit, credits, outage), all speaking the same
+Death persona injected server-side:
+
+```
+Anthropic (claude-opus-4-8)  →  Groq (llama-3.3-70b)  →  OpenRouter (any open model)
+```
+
+Set any subset — with only a Groq key it runs on Groq alone; add
+`OPENROUTER_API_KEY` (https://openrouter.ai/keys) for a third, near-free tier
+that's ideal for a public demo. The dock's status line shows whichever model
+answered. **If every provider is down, Death still replies in character** — the
+user never sees a stack trace.
 
 Override the models or port via `.env`:
 
 ```
-MBD_COACH_MODEL=claude-sonnet-4-6   # cheaper/faster than the default opus-4-8
-MBD_GROQ_MODEL=llama-3.3-70b-versatile   # the Groq fallback model
+MBD_COACH_MODEL=claude-sonnet-4-6            # cheaper/faster than opus-4-8
+MBD_GROQ_MODEL=llama-3.3-70b-versatile       # the Groq fallback model
+MBD_OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct   # ultra-cheap backup
 MBD_API_PORT=8787
 ```
 
@@ -116,6 +124,28 @@ The repo deploys as a Vite static app **plus** serverless functions
    `https://YOUR-APP.vercel.app/api/auth/google/callback`, then set
    `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars and redeploy. The
    "Continue with Google" button appears automatically once configured.
+
+## Opening the demo to the public
+
+The coach costs money/quota per message, so before sharing a link widely:
+
+- **Rate limits are on by default.** Guests are capped per IP, signed-in users
+  per account, over a rolling 24h — tune with `MBD_RATE_GUEST_PER_DAY` (default
+  12) and `MBD_RATE_USER_PER_DAY` (default 120). Over the cap, Death replies "I
+  must rest" in character. The counter is shared across serverless instances
+  when Postgres is configured; otherwise it's per-instance (fine for local).
+- **Lead with the free tiers.** Point the primary at Groq or an OpenRouter free
+  model and keep Anthropic as an optional upgrade — a few dollars of OpenRouter
+  credit funds tens of thousands of turns on 8B-class models.
+- **Encourage sign-in.** A quick account (or Google) both raises the user's cap
+  and deters bots/scrapers hammering the anonymous IP bucket.
+- **Optional: Cloudflare AI Gateway.** For an extra layer of caching, analytics,
+  and automatic retries with zero code change, point a provider's base URL at a
+  [Cloudflare AI Gateway](https://developers.cloudflare.com/ai-gateway/) endpoint
+  (it proxies the same OpenAI-compatible API). Set it as the provider URL and
+  keep your key — the app is unaffected.
+- **Keys never reach the browser.** All provider calls run server-side in
+  `api/coach/*`; the frontend only ever talks to your own `/api`.
 
 ## Reset
 
