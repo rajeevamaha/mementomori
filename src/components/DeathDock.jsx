@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import Reaper from './Reaper.jsx'
 import { useStore, financeTotals } from '../store.js'
 import { computeLife } from '../lib/time.js'
+import { loadConvo, saveConvo } from '../lib/sync.js'
 
 const SUGGESTIONS = [
   'What should I focus on this week?',
@@ -44,6 +45,9 @@ function execTool(name, input) {
       case 'add_legacy':
         s.addLegacy(input)
         return [`Sealed ${input.type}: "${input.title}".`, `⚱ Legacy · ${input.title}`]
+      case 'add_event':
+        s.addEvent({ title: input.title, date: input.date, kind: 'event' })
+        return [`Marked "${input.title}" on the timeline (${input.date}).`, `⌖ Event · ${input.title}`]
       case 'update_profile':
         s.updateProfile(input)
         return ['Profile updated.', '☰ Profile updated']
@@ -69,10 +73,48 @@ export default function DeathDock() {
   const [lastModel, setLastModel] = useState(null) // model that answered the last turn
   const convoRef = useRef([]) // Anthropic-format message list
   const scrollRef = useRef(null)
+  const user = useStore((s) => s.user)
+
+  // Mirror of `display`/`busy` for reading inside async closures.
+  const displayRef = useRef([])
+  useEffect(() => {
+    displayRef.current = display
+  }, [display])
+  const busyRef = useRef(false)
+  useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
 
   useEffect(() => {
     fetch('/api/coach/health').then((r) => r.json()).then(setHealth).catch(() => setHealth({ ok: false }))
   }, [])
+
+  // Death's memory follows the account: restore the saved conversation on
+  // sign-in (so the discussion resumes where it left off), clear it on
+  // sign-out. A signed-in device with no server copy seeds one.
+  useEffect(() => {
+    let cancelled = false
+    // Never swap the transcript out from under a streaming turn — that would
+    // corrupt convoRef (dangling tool_use) and persist the corruption.
+    if (busyRef.current) return
+    if (!user) {
+      convoRef.current = []
+      setDisplay([])
+      return
+    }
+    loadConvo().then((convo) => {
+      if (cancelled || busyRef.current) return
+      if (convo && Array.isArray(convo.messages) && convo.messages.length) {
+        convoRef.current = convo.messages
+        setDisplay(Array.isArray(convo.display) ? convo.display : [])
+      } else if (convoRef.current.length) {
+        saveConvo(convoRef.current, displayRef.current)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -198,6 +240,8 @@ export default function DeathDock() {
       pushText((display.length ? '\n\n' : '') + `⚠ ${err.message}`)
     } finally {
       setBusy(false)
+      // Next tick: displayRef has synced with the final bubble state by then.
+      setTimeout(() => saveConvo(convoRef.current, displayRef.current), 0) // no-op for guests
     }
   }
 

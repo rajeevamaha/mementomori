@@ -1,12 +1,20 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Onboarding from './components/Onboarding.jsx'
 import Shell from './components/Shell.jsx'
 import { useStore } from './store.js'
+import { initAccount } from './lib/sync.js'
 
 export default function App() {
   const profile = useStore((s) => s.profile)
   const completeOnboarding = useStore((s) => s.completeOnboarding)
   const images = useStore((s) => s.images)
+
+  // Restore the account session (HttpOnly cookie) and adopt the server copy
+  // of the plan if signed in. No-op for guests.
+  useEffect(() => {
+    initAccount()
+  }, [])
 
   // Uploaded images (from Settings) win; otherwise the CSS classes use the
   // public/*.jpg files; otherwise the CSS moon + clouds carry the theme.

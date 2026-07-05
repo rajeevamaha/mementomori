@@ -290,6 +290,29 @@ export const useStore = create(
           ],
         })),
 
+      // ---- account (session lives in an HttpOnly cookie; this mirrors it) ----
+      user: null, // { id, login, name, hasPassword, google } when signed in
+      setUser: (user) => set({ user }),
+
+      // Replace local data with the account's server copy (login / cross-device).
+      // Unlike importData this is not user-driven restore — it also clears keys
+      // the server copy legitimately has empty.
+      applyServerState: (data) =>
+        set((s) => ({
+          profile: data.profile ?? null,
+          goals: data.goals ?? [],
+          finance: data.finance ?? { assets: [], liabilities: [], retirementTarget: 0 },
+          family: data.family ?? [],
+          insurance: data.insurance ?? { hasPolicy: null, policies: [] },
+          health: data.health ?? { conditions: [], items: {} },
+          will: data.will ?? { hasWill: null, location: '', executor: '', guardian: '', lastUpdated: '', checklist: {} },
+          legacy: data.legacy ?? [],
+          reviews: data.reviews ?? [],
+          events: data.events ?? [],
+          anniversaryAsked: data.anniversaryAsked ?? false,
+          tone: data.tone ?? s.tone,
+        })),
+
       // ---- backup import (tolerant: only overwrite keys present in the file) ----
       importData: (data) =>
         set((s) => ({
@@ -309,6 +332,13 @@ export const useStore = create(
     {
       name: 'mbd.store.v1',
       version: 3,
+      // `user` is a mirror of the HttpOnly session cookie — never persist it, or
+      // a reload shows signed-in UI (and could fire authed calls) before the
+      // cookie is actually validated by initAccount. Everything else persists.
+      partialize: (state) => {
+        const { user, ...rest } = state
+        return rest
+      },
       // v2: drop any per-device uploaded images so the built-in (transparent)
       // wolf defaults in /public win. Earlier uploads were flat white-bg PNGs.
       // v3: seed the new health / insurance / will slices for existing users.

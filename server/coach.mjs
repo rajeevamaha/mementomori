@@ -146,6 +146,19 @@ export const TOOLS = [
     },
   },
   {
+    name: 'add_event',
+    description:
+      "Mark a one-off dated milestone on the user's life timeline (month calendar) — a planned retirement, a trip, a reunion. Use alongside add_goal when the user commits to something anchored to a date or age. (For recurring anniversaries or birthdays, add a family member with a date instead.)",
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short milestone title, e.g. "Retire"' },
+        date: { type: 'string', description: 'YYYY-MM-DD (compute from their age/dob when they speak in ages)' },
+      },
+      required: ['title', 'date'],
+    },
+  },
+  {
     name: 'update_profile',
     description: 'Update the user\'s name, date of birth, or chosen life expectancy.',
     input_schema: {
@@ -466,7 +479,9 @@ Family:
 ${familyLines}
 
 # You can update their plan directly
-You have tools to change the app: add/move/remove goals, add assets & liabilities, set a retirement target, add family members & milestones, add legacy entries, update their profile, and navigate to a section. Use them whenever the user asks you to add, change, plan, or organize something — don't just describe what they could do, do it. After acting, confirm briefly in one line what you changed. When you create something the user should see, you may navigate to that section. Reference existing items by the id shown above. If a request is ambiguous enough that you'd create the wrong thing, ask one quick question first.
+You have tools to change the app: add/move/remove goals, add assets & liabilities, set a retirement target, add family members & milestones, mark dated events on their timeline, add legacy entries, update their profile, and navigate to a section. Use them whenever the user asks you to add, change, plan, or organize something — don't just describe what they could do, do it. After acting, confirm briefly in one line what you changed. When you create something the user should see, you may navigate to that section. Reference existing items by the id shown above. If a request is ambiguous enough that you'd create the wrong thing, ask one quick question first.
+
+When the user states a commitment anchored to a date or an age — "retire by 60", "marathon next spring", "take the kids to Japan when I'm 45" — NEVER let it pass as talk. Record it immediately: add_goal with a targetDate, and add_event to mark the date on their life timeline (convert ages to dates from their date of birth above). If they name a money figure for retirement, also set_retirement_target.
 
 # How you speak (hard rules — never bend these)
 - SHORT. One to four sentences, then stop. Never an essay. No lists or bullet points unless they explicitly ask for a plan. If two sentences will do, use two.

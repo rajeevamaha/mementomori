@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../../store.js'
 import DateSelect from '../DateSelect.jsx'
+import AccountPanel from '../AccountPanel.jsx'
+import { isSignedIn, logout } from '../../lib/sync.js'
 
 const TONES = [
   { key: 'gentle', label: 'Gentle', hint: 'A softer hand — encouragement over confrontation.' },
@@ -180,7 +182,20 @@ export default function SettingsView() {
     reader.readAsText(file)
   }
 
-  const onReset = () => {
+  const onReset = async () => {
+    // Signed in: reset is device-only — sign out first (flushes the plan up) so
+    // the account's cloud copy survives and can be restored by signing back in.
+    if (isSignedIn()) {
+      if (
+        window.confirm(
+          'Clear this device and sign out? Your account keeps its saved plan — sign back in to restore it.'
+        )
+      ) {
+        await logout()
+        resetAll()
+      }
+      return
+    }
     if (window.confirm('Reset everything — profile, goals, finances, family, legacy? This cannot be undone.')) {
       resetAll()
     }
@@ -190,10 +205,16 @@ export default function SettingsView() {
     <div>
       <h2 className="view-title">Settings</h2>
       <p className="view-sub">
-        Your details, how Death addresses you, and a backup of everything — stored only on this device.
+        Your account, your details, how Death addresses you, and a backup of everything.
       </p>
 
       <div className="grid">
+        {/* Account */}
+        <div className="card">
+          <div className="card-title">Account</div>
+          <AccountPanel />
+        </div>
+
         {/* Your details */}
         <div className="card">
           <div className="card-title">Your details</div>

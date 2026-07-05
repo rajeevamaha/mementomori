@@ -29,10 +29,19 @@ reaper shows you exactly how much sand is left, then helps you spend it well.
   change and you watch the dashboard update. Tools run locally against your store;
   nothing is auto-sent anywhere.
 
+- **Accounts (optional)** — sign in with a username/email + password (or
+  Google, when configured) and your plan **and Death's memory of your
+  conversations** sync to your account and follow you across devices. Without
+  an account the app stays fully local to the device, exactly as before.
+
 ## Stack
 
 - **Vite + React 18** + **Framer Motion** (all animation).
 - **Zustand** for state, persisted to `localStorage` (the whole platform).
+- **Accounts** — no auth framework: scrypt password hashes, HMAC-signed
+  HttpOnly session cookies, and a plain OAuth 2 code flow for Google
+  (`server/auth.mjs`). Storage is Postgres in production (`POSTGRES_URL`) or
+  JSON files under `.data/` in local dev (`server/store.mjs`).
 - **Coach core** (`server/coach.mjs`) that holds the API keys and streams from
   Claude/Groq. The browser never sees the keys. Locally it's served by a thin
   **Express** wrapper (`server/index.mjs`); on Vercel the same handlers deploy
@@ -89,12 +98,24 @@ MBD_API_PORT=8787
 
 ## Deploying on Vercel
 
-The repo deploys as a Vite static app **plus** serverless functions for the
-coach (`api/coach/health.mjs`, `api/coach/chat.mjs` — see `vercel.json`).
-For the coach to work in production, set the keys in **Project → Settings →
-Environment Variables** (`ANTHROPIC_API_KEY` and/or `GROQ_API_KEY`, Production
-+ Preview) and **redeploy** — env vars only apply to new deployments. Optional
-overrides (`MBD_COACH_MODEL`, `MBD_GROQ_MODEL`) work there too.
+The repo deploys as a Vite static app **plus** serverless functions
+(`api/**/*.mjs` — coach, auth, and sync; see `vercel.json`).
+
+1. **Coach:** set `ANTHROPIC_API_KEY` and/or `GROQ_API_KEY` in **Project →
+   Settings → Environment Variables** (Production + Preview), then redeploy —
+   env vars only apply to new deployments.
+2. **Accounts:** create a database under **Storage → Create Database →
+   Postgres (Neon)** and connect it to the project (that injects
+   `POSTGRES_URL` automatically). Add an `AUTH_SECRET` env var — generate one
+   with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+   Redeploy. Until both exist, the deployed app runs in device-only mode and
+   says so in Settings → Account.
+3. **Google sign-in (optional):** at
+   [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
+   create an **OAuth client ID → Web application**, add the redirect URI
+   `https://YOUR-APP.vercel.app/api/auth/google/callback`, then set
+   `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars and redeploy. The
+   "Continue with Google" button appears automatically once configured.
 
 ## Reset
 

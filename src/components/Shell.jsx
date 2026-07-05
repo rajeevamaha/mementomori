@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useStore } from '../store.js'
+import { isSignedIn, logout } from '../lib/sync.js'
 import DashboardView from './views/DashboardView.jsx'
 import GoalsView from './views/GoalsView.jsx'
 import FinanceView from './views/FinanceView.jsx'
@@ -58,10 +59,25 @@ export default function Shell() {
   const setView = useStore((s) => s.setView)
   const resetAll = useStore((s) => s.resetAll)
   const profile = useStore((s) => s.profile)
+  const user = useStore((s) => s.user)
 
   const ActiveView = VIEWS[view] || DashboardView
 
-  const onReset = () => {
+  const onReset = async () => {
+    // Signed in: reset clears THIS DEVICE only — sign out first (which flushes
+    // the current plan up) so the account's cloud copy is preserved and can be
+    // restored by signing back in. Guests: it's a straight local wipe.
+    if (isSignedIn()) {
+      if (
+        window.confirm(
+          'Clear this device and sign out? Your account keeps its saved plan — sign back in to restore it.'
+        )
+      ) {
+        await logout()
+        resetAll()
+      }
+      return
+    }
     if (window.confirm('Reset everything — profile, goals, finances, family, legacy? This cannot be undone.')) {
       resetAll()
     }
@@ -90,6 +106,13 @@ export default function Shell() {
             </button>
           ))}
         </nav>
+        <button
+          className="account-chip"
+          onClick={() => setView('settings')}
+          title={user ? 'Manage your account in Settings' : 'Sign in from Settings'}
+        >
+          ⚷ {user ? user.name || user.login : 'Sign in'}
+        </button>
         <button className="reset-link sidebar-reset" onClick={onReset}>
           ↺ Reset
         </button>

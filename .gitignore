@@ -4,3 +4,6 @@ dist
 *.local
 .vite
 .env
+
+# Local account data (JSON file store for dev)
+.data/

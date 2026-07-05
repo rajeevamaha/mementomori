@@ -2,7 +2,8 @@
 
 > This file is auto-loaded by Claude Code. It's the single source of truth for a
 > new session picking this project up. Read it fully before editing.
-> Last updated: 2026-07-01.
+> Last updated: 2026-07-03 (accounts + serverless coach on Vercel; the
+> single-repo approach superseded the old two-repo plan).
 
 ---
 
@@ -45,14 +46,28 @@ Owner: Rajeev(a). Deploys on **Vercel**.
 
 ## 3. Current architecture (AS BUILT)
 
-Single repo, **client-only + a thin local AI proxy**:
+Single repo: **local-first SPA + a framework-agnostic server core that runs
+both locally (Express) and on Vercel (serverless functions in `api/`)**.
 
 - **Frontend:** Vite + React 18, **Zustand** store persisted to `localStorage`,
   **Framer Motion** for animation. No router — a `view` string in the store
   switches screens.
-- **Backend (local only):** `server/index.mjs` — a small **Express** proxy that
-  holds the Anthropic key and runs the Claude tool-use loop, streaming NDJSON.
-- **No accounts / no database yet** — everything is per-device in localStorage.
+- **Server core (shared by Express + Vercel):**
+  - `server/coach.mjs` — Death coach: Anthropic primary → automatic Groq
+    fallback (OpenAI-compat translation layer), NDJSON streaming, salvage of
+    Llama's text-format tool calls, pasted-key sanitization (first token only).
+  - `server/auth.mjs` — accounts: scrypt passwords, HMAC-signed HttpOnly
+    session cookie (`mbd_session`, 30d), Google OAuth code flow (activates when
+    GOOGLE_CLIENT_ID/SECRET set), per-user `/api/state` + `/api/convo` sync.
+  - `server/store.mjs` — storage: Postgres when POSTGRES_URL set (prod), JSON
+    files under `.data/` locally, cleanly "unavailable" on Vercel without a DB.
+  - `server/index.mjs` — just the local Express wiring (port 8787).
+  - `api/**/*.mjs` — Vercel functions re-exporting the same handlers.
+- **Accounts are optional:** guests stay 100% device-local (as before). Signing
+  in adopts the server copy (server wins if it has a profile, else the device
+  seeds the account), then changes push debounced to `/api/state`. The Death
+  dock conversation syncs to `/api/convo`, so Death resumes where the user
+  left off across devices/reloads.
 
 ### File map
 ```
@@ -180,47 +195,44 @@ Opus 4.7/4.8; stream for large outputs. When touching Claude code, consult the
 
 ---
 
-## 8. Planned direction (DECIDED, NOT YET BUILT)
+## 8. Direction (what happened to the old two-repo plan)
 
-The user wants to split into **two repos** for real user accounts, deployed on
-Vercel. Decisions locked:
+The old plan (two repos, Hono/TS backend, Auth.js + @auth/pg-adapter) was
+**superseded in practice on 2026-07-02/03**: the coach moved to Vercel
+serverless functions inside THIS repo, and accounts were built the same way
+(no auth framework — see §3). The goals of that plan are mostly met with far
+less machinery: server-held Death prompt on every request regardless of model,
+Groq as free fallback, Postgres per-user persistence, first-party cookies
+(same origin by construction). Do NOT resurrect the two-repo split unless the
+user asks.
 
-- `memento-mori-web` — keep this Vite SPA (Vercel static). `memento-mori-api` —
-  new **Hono (TypeScript)** backend on Vercel Functions.
-- **Same-origin trick:** web `vercel.json` rewrites `/api/*` to the API
-  deployment so **Auth.js** session cookies are first-party (no CORS/cookie
-  pain) while keeping two repos.
-- **Auth + DB:** **Vercel Postgres + Auth.js** (`@auth/pg-adapter`; OAuth or
-  magic-link TBD). Tables mirror the Zustand shape, per-user.
-- **AI strategy:** provider-agnostic adapter layer (`anthropic`, `google`,
-  `openai-compatible` covering OpenAI/Groq/OpenRouter/etc). **Free default model:
-  Groq · Llama 3.3 70B** (owner-funded, rate-limited). **BYO key** unlocks deeper
-  chat + higher caps; BYO keys **encrypted at rest** (AES-256-GCM, server key).
-- **The Death system prompt lives in backend code** and is injected on EVERY
-  request regardless of model, so any user-added model acts as Death and users
-  can't override the persona.
+Still-open ideas from that plan: model tiering + BYO-key management in Settings
+(encrypted at rest), provider adapter beyond Anthropic/Groq.
 
-**Phases:** 1) scaffold both repos + move the AI proxy into the Hono backend
-(Death persona + Groq + adapters), runs locally; 2) Auth.js + Postgres profiles
-(+ guest mode); 3) model tiering + BYO key mgmt in Settings; 4) harden + deploy.
-
-**User must provision (agent can't):** 2 GitHub repos, 2 Vercel projects, Vercel
-Postgres, a Groq API key, Auth.js `AUTH_SECRET` + an OAuth app, and an
-`ENCRYPTION_KEY`. Prepare `.env.example` + a deploy runbook for them.
-
-Phase 1 was greenlit *pending a final confirmation* on repo locations — confirm
-before scaffolding.
+**User must provision (agent can't):** Vercel Postgres (Storage → Neon,
+injects POSTGRES_URL), `AUTH_SECRET` env var on Vercel, and a Google OAuth
+client (GOOGLE_CLIENT_ID/SECRET) if Google sign-in is wanted. Runbook lives in
+README → "Deploying on Vercel".
 
 ---
 
 ## 9. Open TODOs / next steps
 
-- Commit the uncommitted hero "you are going to die, why not make it worth it?"
-  line if not already committed.
-- Start **Phase 1** (backend split) when the user confirms repo paths.
+- **User provisions prod accounts** (see §8): Vercel Postgres + AUTH_SECRET,
+  optional Google OAuth client. Code is deployed and waits on env vars.
+- **Groq free tier is 100k tokens/day** — the system prompt is ~2.5k/turn, so
+  heavy use exhausts it (hit on 2026-07-03). Real fix: Anthropic credits, or a
+  smaller Groq prompt / cheaper primary.
+- **Anthropic account has no credits** (calls 400 with "credit balance too
+  low") — the coach currently runs on Groq fallback only. User should top up.
+- The "self-improving Death" design (per-user memory extraction + cross-user
+  playbook distillation) was discussed and architected in-session on
+  2026-07-02 — Layer 1 (per-user memory + `remember` tool + reflection pass)
+  is the agreed next build step.
+- Both API keys were pasted into chat/Vercel UI carelessly — remind the user
+  to rotate them eventually.
 - Optional: surface annual/5-year goals to the Death coach; brighten/tune the
   graveyard background if requested; use `hero-wolf2.png` as an alt pose.
-- Consider real persistence (the whole app is localStorage-only today).
 
 ---
 

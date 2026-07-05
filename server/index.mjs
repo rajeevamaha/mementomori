@@ -6,14 +6,36 @@
 import 'dotenv/config'
 import express from 'express'
 import { healthHandler, chatHandler, coachHealth, coachModel, groqModel, TOOLS } from './coach.mjs'
+import {
+  registerHandler,
+  loginHandler,
+  logoutHandler,
+  meHandler,
+  profileHandler,
+  googleStartHandler,
+  googleCallbackHandler,
+  stateHandler,
+  convoHandler,
+} from './auth.mjs'
 
 const PORT = process.env.MBD_API_PORT || 8787
 
 const app = express()
-app.use(express.json({ limit: '2mb' }))
+// 4mb: the synced app state can carry small data-URL image overrides.
+app.use(express.json({ limit: '4mb' }))
 
 app.get('/api/coach/health', healthHandler)
 app.post('/api/coach/chat', chatHandler)
+
+app.post('/api/auth/register', registerHandler)
+app.post('/api/auth/login', loginHandler)
+app.post('/api/auth/logout', logoutHandler)
+app.get('/api/auth/me', meHandler)
+app.post('/api/auth/profile', profileHandler)
+app.get('/api/auth/google', googleStartHandler)
+app.get('/api/auth/google/callback', googleCallbackHandler)
+app.all('/api/state', stateHandler)
+app.all('/api/convo', convoHandler)
 
 // MBD_NO_LISTEN lets tests import the app without binding the port.
 if (!process.env.MBD_NO_LISTEN) {

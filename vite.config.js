@@ -12,6 +12,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
+        // Forward the original host so the API can build correct absolute URLs
+        // (the Google OAuth redirect_uri must point back at :5174, not :8787).
+        xfwd: true,
       },
     },
   },

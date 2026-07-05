@@ -2353,3 +2353,52 @@ select.field-input {
   .onboard-title { font-size: clamp(1.55rem, 7vw, 2.1rem); }
   .range-value { min-width: 64px; font-size: 1.35rem; }
 }
+
+/* ============================================================
+   Accounts (sign in / register / profile)
+   ============================================================ */
+
+.account-panel { display: flex; flex-direction: column; gap: 10px; }
+.account-form { display: flex; flex-direction: column; gap: 8px; }
+.auth-tabs { display: flex; gap: 8px; }
+.auth-tabs .mini.active {
+  background: rgba(230, 57, 70, 0.18);
+  border-color: rgba(230, 57, 70, 0.45);
+  color: var(--bone);
+}
+.google-btn { text-align: center; text-decoration: none; }
+.account-error { color: var(--ember); font-size: 0.85rem; margin: 0; }
+.account-flash { color: var(--bone); font-size: 0.85rem; margin: 0; }
+.account-signed { margin: 0; color: var(--bone); }
+.account-actions { display: flex; gap: 8px; }
+.small { font-size: 0.82rem; }
+
+/* Sidebar account chip (above Reset) */
+.account-chip {
+  background: none;
+  border: 1px solid rgba(233, 230, 218, 0.14);
+  border-radius: 2px;
+  color: var(--ash);
+  padding: 7px 10px;
+  margin: 0 14px 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-chip:hover { color: var(--bone); border-color: rgba(233, 230, 218, 0.3); }
+
+/* Onboarding "been here before?" line */
+.onboard-signin { text-align: center; color: var(--ash-dim); font-size: 0.9rem; margin: 14px 0 0; }
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--ember);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+.link-btn:hover { color: var(--bone); }
