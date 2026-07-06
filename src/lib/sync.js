@@ -191,14 +191,26 @@ export async function register(loginName, password, name) {
 }
 
 export async function logout() {
-  await pushStateNow() // don't lose the last few seconds of edits
+  await pushStateNow() // flush the latest edits to the account first
   try {
     await jsonFetch('/api/auth/logout', { method: 'POST' })
   } catch {
-    // Even if the request fails, drop the local session mirror.
+    // Even if the request fails, drop the local session + data below.
   }
+  // Safety net: stash the device snapshot in case that final push didn't reach
+  // the server (offline) — recoverable, never silently lost.
+  try {
+    localStorage.setItem('mbd.logout-backup', JSON.stringify({ savedAt: Date.now(), state: snapshot() }))
+  } catch {
+    /* quota — best effort */
+  }
+  // Clear the session mirror FIRST so the store subscription won't push the
+  // wipe up to the account, then clear the device — the plan is safe on the
+  // server and returns on the next sign-in. App now shows the entry screen.
   useStore.getState().setUser(null)
+  useStore.getState().resetAll()
   lastPushed = ''
+  dirty = false
 }
 
 export async function updateAccountProfile(patch) {
