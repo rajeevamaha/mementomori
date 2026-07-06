@@ -74,11 +74,22 @@ both locally (Express) and on Vercel (serverless functions in `api/`)**.
     Tables: mbd_users/state/convo/rate.
   - `server/index.mjs` — just the local Express wiring (port 8787).
   - `api/**/*.mjs` — Vercel functions re-exporting the same handlers.
-- **Accounts are optional:** guests stay 100% device-local (as before). Signing
-  in adopts the server copy (server wins if it has a profile, else the device
-  seeds the account), then changes push debounced to `/api/state`. The Death
-  dock conversation syncs to `/api/convo`, so Death resumes where the user
-  left off across devices/reloads.
+- **Accounts are REQUIRED (as of 2026-07-06):** the app is account-only — no
+  guest mode. `App.jsx` gates everything: boot splash → (no DB → "not ready"
+  notice) → `AuthScreen` (login/register, the first screen) → `Onboarding`
+  (new account, no profile yet) → `Shell`. So a DB is required in production;
+  without `POSTGRES_URL` the deployed app shows the "not ready" notice. On
+  sign-in, adopt the server copy (server wins if it has a profile, else the
+  device seeds the account), then push debounced to `/api/state`; the Death
+  dock conversation syncs to `/api/convo`. Sign-out clears the device and
+  returns to `AuthScreen` (account keeps its data on the server).
+- **Local Postgres for testing:** `postgresql@16` is installed via Homebrew
+  (`/opt/homebrew/opt/postgresql@16/bin`). To run the real pgStore locally:
+  `initdb`, start with `LC_ALL=C` + a short `-k` socket dir (e.g. `/tmp/mbdpg`)
+  on a spare port, then `POSTGRES_URL=postgres://<user>@127.0.0.1:<port>/<db>
+  node server/index.mjs`. The pg path (tables auto-create, JSONB, atomic
+  rate-limit upsert, scrypt hashes) was validated end-to-end on 2026-07-06.
+  Without POSTGRES_URL, local dev uses JSON files under `.data/`.
 
 ### File map
 ```

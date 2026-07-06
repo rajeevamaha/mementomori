@@ -29,15 +29,16 @@ reaper shows you exactly how much sand is left, then helps you spend it well.
   change and you watch the dashboard update. Tools run locally against your store;
   nothing is auto-sent anywhere.
 
-- **Accounts (optional)** — sign in with a username/email + password (or
-  Google, when configured) and your plan **and Death's memory of your
-  conversations** sync to your account and follow you across devices. Without
-  an account the app stays fully local to the device, exactly as before.
+- **Accounts (required)** — the app is account-only: a visitor signs in
+  (username/email + password, or Google) before anything else. Your plan **and
+  Death's memory of your conversations** are stored to your account and follow
+  you across every device you sign in on.
 
 ## Stack
 
 - **Vite + React 18** + **Framer Motion** (all animation).
-- **Zustand** for state, persisted to `localStorage` (the whole platform).
+- **Zustand** for state, mirrored to your account (Postgres) and cached in
+  `localStorage` between syncs.
 - **Accounts** — no auth framework: scrypt password hashes, HMAC-signed
   HttpOnly session cookies, and a plain OAuth 2 code flow for Google
   (`server/auth.mjs`). Storage is Postgres in production (`POSTGRES_URL`) or
@@ -109,16 +110,23 @@ MBD_API_PORT=8787
 The repo deploys as a Vite static app **plus** serverless functions
 (`api/**/*.mjs` — coach, auth, and sync; see `vercel.json`).
 
-1. **Coach:** set `ANTHROPIC_API_KEY` and/or `GROQ_API_KEY` in **Project →
-   Settings → Environment Variables** (Production + Preview), then redeploy —
-   env vars only apply to new deployments.
-2. **Accounts:** create a database under **Storage → Create Database →
-   Postgres (Neon)** and connect it to the project (that injects
-   `POSTGRES_URL` automatically). Add an `AUTH_SECRET` env var — generate one
-   with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
-   Redeploy. Until both exist, the deployed app runs in device-only mode and
-   says so in Settings → Account.
-3. **Google sign-in (optional):** at
+**The app is account-only** — a visitor sees the sign-in screen first and
+cannot use anything until they have an account, so **a database is required**
+(without one the deployed app shows a "not ready" notice, by design).
+
+1. **Database (required).** In the Vercel dashboard: **Storage → Create
+   Database → Postgres** (Neon), then **Connect** it to this project. That
+   injects `POSTGRES_URL` automatically — no value to paste. The tables
+   (`mbd_users`, `mbd_state`, `mbd_convo`, `mbd_rate`) **auto-create on first
+   use**; there is no migration step.
+2. **`AUTH_SECRET` (required).** Add it under **Settings → Environment
+   Variables**. Generate one with
+   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+   It signs session cookies — keep it secret; rotating it logs everyone out.
+3. **Coach keys.** Set `ANTHROPIC_API_KEY` and/or `GROQ_API_KEY` (and optional
+   `OPENROUTER_API_KEY`) the same way. Redeploy — env vars only apply to new
+   deployments.
+4. **Google sign-in (optional):** at
    [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
    create an **OAuth client ID → Web application**, add the redirect URI
    `https://YOUR-APP.vercel.app/api/auth/google/callback`, then set
@@ -147,13 +155,40 @@ The coach costs money/quota per message, so before sharing a link widely:
 - **Keys never reach the browser.** All provider calls run server-side in
   `api/coach/*`; the frontend only ever talks to your own `/api`.
 
+## Security
+
+Accounts are built without an auth framework, on standard primitives:
+
+- **Passwords** — hashed with `scrypt` (per-user random salt); the plaintext is
+  never stored (verified against a live Postgres — the column holds only
+  `scrypt:<salt>:<hash>`).
+- **Sessions** — stateless **HMAC-signed** tokens in an **HttpOnly, SameSite=Lax**
+  cookie (`Secure` over HTTPS). The signature includes a version derived from
+  the password hash, so **changing the password invalidates every old session**.
+- **Google OAuth** — the standard code flow, with a **per-flow nonce cookie
+  bound to the `state`** (defeats login-CSRF) and a **verified-email requirement**
+  before linking to an existing account.
+- **Storage** — all SQL is **parameterized** (no injection); per-user rows keyed
+  by id; state/convo endpoints require a valid session; JSONB values are
+  serialized explicitly; the DB connection uses **TLS**.
+- **Rate limiting** — both auth and the coach are limited (per-IP and per-account),
+  with a fixed-window counter that's **atomic across serverless instances** in
+  Postgres and **fails open** so a DB hiccup can't lock the app.
+- **Secrets** — all API keys live server-side in `api/*`; **nothing secret ever
+  reaches the browser**. Pasted keys are sanitized to a single token.
+
+Operational must-dos: set a strong random `AUTH_SECRET`, keep it (and the
+provider keys) only in Vercel env vars, and serve over HTTPS (Vercel does by
+default).
+
 ## Reset
 
-**↺ Reset** in the sidebar wipes everything (profile, goals, finances, family,
-legacy, reflections) and replays onboarding.
+**↺ Reset** in the sidebar clears this device and signs you out. Your account
+keeps its saved plan on the server — sign back in to restore it.
 
 ## Privacy
 
-All of your planning data lives in `localStorage` on your machine. The only
-thing sent off-device is the chat context you give the Death coach — and only
-when you have configured your own Anthropic key and send a message.
+With an account, your plan and your conversations with Death are stored to your
+account (Postgres) so they follow you across devices; they are sent off-device
+only when you send the coach a message. API keys are held server-side and never
+reach the browser.
