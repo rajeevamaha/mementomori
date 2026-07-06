@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import Reaper from './Reaper.jsx'
 import DateSelect from './DateSelect.jsx'
-import AccountPanel from './AccountPanel.jsx'
 import { parseDate } from '../lib/time.js'
 
 const LAST = 3 // index of the final step (0-based); keep in sync with `steps`
 
+// Reached only after sign-in, for a new account with no profile yet — it
+// collects name / dob / sex / life expectancy, then the app opens.
 export default function Onboarding({ onComplete }) {
   const [step, setStep] = useState(0)
-  const [signIn, setSignIn] = useState(false) // returning user: sign in instead
   const [dir, setDir] = useState(1)
   const [name, setName] = useState('')
   const [dob, setDob] = useState('')
@@ -124,32 +124,6 @@ export default function Onboarding({ onComplete }) {
 
   const cur = steps[step]
 
-  // Returning user path: sign in and the account's plan is adopted — App
-  // switches to the Shell the moment the profile lands in the store.
-  if (signIn) {
-    return (
-      <div className="onboard">
-        <motion.div
-          className="onboard-card"
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 4 }}>
-            <Reaper size={108} />
-          </div>
-          <div className="eyebrow">The reaper remembers</div>
-          <h2 className="onboard-title">Welcome back.</h2>
-          <p className="onboard-sub">Sign in and your plan — and Death's memory of you — returns.</p>
-          <AccountPanel compact />
-          <div className="onboard-actions">
-            <button className="btn btn-ghost" onClick={() => setSignIn(false)}>← I'm new here</button>
-          </div>
-        </motion.div>
-      </div>
-    )
-  }
-
   return (
     <div className="onboard">
       <motion.div
@@ -205,15 +179,6 @@ export default function Onboarding({ onComplete }) {
             </button>
           )}
         </div>
-
-        {step === 0 && (
-          <p className="onboard-signin">
-            Been here before?{' '}
-            <button className="link-btn" onClick={() => setSignIn(true)}>
-              Sign in
-            </button>
-          </p>
-        )}
 
         <p className="onboard-ethos">
           “The certainty of death and the uncertainty of its timing provides the freedom to enjoy life.”

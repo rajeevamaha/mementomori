@@ -147,8 +147,8 @@ export default function AccountPanel({ compact = false }) {
 
       {error && <p className="account-error">⚠ {error}</p>}
       <p className="muted small">
-        Signing in syncs your plan and Death's memory of your conversations across devices. Without an
-        account everything stays on this device only.
+        Your plan and Death's memory of your conversations are kept safe to your account and follow you
+        across every device you sign in on.
       </p>
     </div>
   )

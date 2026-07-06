@@ -2330,15 +2330,3 @@ select.field-input {
 }
 .account-chip:hover { color: var(--bone); border-color: rgba(233, 230, 218, 0.3); }
 
-/* Onboarding "been here before?" line */
-.onboard-signin { text-align: center; color: var(--ash-dim); font-size: 0.9rem; margin: 14px 0 0; }
-.link-btn {
-  background: none;
-  border: none;
-  color: var(--ember);
-  cursor: pointer;
-  font: inherit;
-  text-decoration: underline;
-  padding: 0;
-}
-.link-btn:hover { color: var(--bone); }
