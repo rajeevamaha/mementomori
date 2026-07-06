@@ -10,55 +10,6 @@ const TONES = [
   { key: 'unflinching', label: 'Unflinching', hint: 'No cushioning. The clock, plainly.' },
 ]
 
-// Shrink an uploaded image in-browser so it fits comfortably in localStorage.
-function downscale(file, maxDim, type, quality) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
-      const w = Math.max(1, Math.round(img.width * scale))
-      const h = Math.max(1, Math.round(img.height * scale))
-      const c = document.createElement('canvas')
-      c.width = w
-      c.height = h
-      c.getContext('2d').drawImage(img, 0, 0, w, h)
-      URL.revokeObjectURL(url)
-      try {
-        resolve(c.toDataURL(type, quality))
-      } catch (e) {
-        reject(e)
-      }
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('bad image'))
-    }
-    img.src = url
-  })
-}
-
-function ImageSlot({ label, hint, slot, value, onPick, onClear }) {
-  return (
-    <div className="img-slot">
-      <div className="img-thumb" style={value ? { backgroundImage: `url(${value})` } : undefined}>
-        {!value && <span className="img-thumb-empty">none</span>}
-      </div>
-      <div className="img-slot-meta">
-        <div className="img-slot-label">{label}</div>
-        <p className="field-hint">{hint}</p>
-        <div className="img-slot-actions">
-          <label className="btn btn-primary img-upload-btn">
-            {value ? 'Replace' : 'Upload'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => onPick(slot, e)} />
-          </label>
-          {value && <button className="btn btn-ghost" onClick={() => onClear(slot)}>Remove</button>}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function SettingsView() {
   const profile = useStore((s) => s.profile)
   const updateProfile = useStore((s) => s.updateProfile)
@@ -66,38 +17,6 @@ export default function SettingsView() {
   const setTone = useStore((s) => s.setTone)
   const importData = useStore((s) => s.importData)
   const resetAll = useStore((s) => s.resetAll)
-  const images = useStore((s) => s.images)
-  const setImage = useStore((s) => s.setImage)
-  const clearImage = useStore((s) => s.clearImage)
-  const [imgErr, setImgErr] = useState('')
-
-  const onPickImage = async (slot, e) => {
-    setImgErr('')
-    const file = e.target.files?.[0]
-    if (e.target) e.target.value = ''
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setImgErr('Please choose an image file (PNG or JPG).')
-      return
-    }
-    try {
-      const dataUrl =
-        slot === 'reaper'
-          ? await downscale(file, 420, file.type.includes('png') ? 'image/png' : 'image/jpeg', 0.92)
-          : await downscale(file, 1600, 'image/jpeg', 0.72)
-      if (dataUrl.length > 3_600_000) {
-        setImgErr('That image is too large even after shrinking — try a smaller one.')
-        return
-      }
-      try {
-        setImage(slot, dataUrl)
-      } catch {
-        setImgErr('Ran out of local storage — remove another image and try again.')
-      }
-    } catch {
-      setImgErr('Could not read that image.')
-    }
-  }
 
   const [name, setName] = useState(profile?.name || '')
   const [dob, setDob] = useState(profile?.dob || '')
@@ -267,42 +186,6 @@ export default function SettingsView() {
               <p className="field-hint">{t.hint}</p>
             </div>
           ))}
-        </div>
-
-        {/* Appearance — wolf & backgrounds */}
-        <div className="card span-2">
-          <div className="card-title">Appearance — your wolf & backgrounds</div>
-          <p className="field-hint">
-            Upload the images you have. They're used everywhere instantly and stored on this device.
-            A transparent PNG cut-out looks best for the wolf.
-          </p>
-          <div className="img-slots">
-            <ImageSlot
-              label="Wolf avatar"
-              hint="Shown in the Death dock and the countdown. A square/cut-out wolf works best."
-              slot="reaper"
-              value={images?.reaper}
-              onPick={onPickImage}
-              onClear={clearImage}
-            />
-            <ImageSlot
-              label="Page background"
-              hint="The moonlit graveyard behind every screen."
-              slot="bg"
-              value={images?.bg}
-              onPick={onPickImage}
-              onClear={clearImage}
-            />
-            <ImageSlot
-              label="Onboarding background"
-              hint="The wolf + moon scene on the welcome screen."
-              slot="hero"
-              value={images?.hero}
-              onPick={onPickImage}
-              onClear={clearImage}
-            />
-          </div>
-          {imgErr && <p className="settings-error">{imgErr}</p>}
         </div>
 
         {/* Your data */}

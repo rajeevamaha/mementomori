@@ -27,16 +27,14 @@ export const useStore = create(
       view: 'dashboard',
       dockOpen: true, // Death side-dock, open by default
       tone: 'balanced', // 'gentle' | 'balanced' | 'unflinching'
-      // User-supplied artwork as data URLs (downscaled). reaper = wolf avatar,
-      // bg = full-page background, hero = onboarding background.
+      // Retained for persisted-shape stability only; the aesthetic is fixed and
+      // no longer user-overridable (the Appearance uploader was removed).
       images: { reaper: '', bg: '', hero: '' },
 
       setView: (view) => set({ view }),
       setDockOpen: (dockOpen) => set({ dockOpen }),
       toggleDock: () => set((s) => ({ dockOpen: !s.dockOpen })),
       setTone: (tone) => set({ tone }),
-      setImage: (slot, dataUrl) => set((s) => ({ images: { ...s.images, [slot]: dataUrl } })),
-      clearImage: (slot) => set((s) => ({ images: { ...s.images, [slot]: '' } })),
 
       completeOnboarding: (profile) => set({ profile, view: 'dashboard' }),
       resetAll: () =>
