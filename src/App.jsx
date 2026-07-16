@@ -23,28 +23,31 @@ export default function App() {
       .finally(() => setPhase('ready'))
   }, [])
 
-  // The app is account-only: nothing but the login gate is reachable until a
-  // user signs in. Order: boot → (no DB → setup notice) → not signed in → login
-  // → signed in but no profile → onboarding → the app.
-  const isApp = !!user && !!profile
+  // Accounts are used when the server has a database + AUTH_SECRET
+  // (accountsAvailable). When they are, the login gate comes first. When they
+  // are NOT (e.g. this Vercel deployment has no Postgres yet), the app degrades
+  // to LOCAL-ONLY mode — the original local-first experience, data in
+  // localStorage — instead of hard-blocking. Provisioning a DB flips accounts
+  // back on with no code change; a local profile then seeds the account on the
+  // first sign-in. Order: boot → (accounts on & signed out → login) →
+  // no profile → onboarding → the app.
   let screen
   let key
   if (phase === 'booting') {
     screen = <BootSplash />
     key = 'boot'
-  } else if (!accountsAvailable) {
-    screen = <SetupNotice />
-    key = 'setup'
-  } else if (!user) {
+  } else if (accountsAvailable && !user) {
     screen = <AuthScreen />
     key = 'auth'
   } else if (!profile) {
+    // Signed in with no profile yet, or running local-only — either way, onboard.
     screen = <Onboarding onComplete={completeOnboarding} />
     key = 'onboard'
   } else {
     screen = <Shell />
     key = 'shell'
   }
+  const isApp = key === 'shell'
 
   return (
     <>
@@ -77,26 +80,6 @@ function BootSplash() {
           <Reaper size={108} />
         </div>
         <p className="onboard-sub">Summoning Death…</p>
-      </div>
-    </div>
-  )
-}
-
-// Shown when the server has no database, so accounts can't work yet. The app is
-// account-only, so there is nothing to fall back to — this is a clear "not yet"
-// rather than a broken page. (Provision Postgres + AUTH_SECRET to enable it.)
-function SetupNotice() {
-  return (
-    <div className="onboard">
-      <div className="onboard-card" style={{ textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-          <Reaper size={108} />
-        </div>
-        <div className="eyebrow">Not yet</div>
-        <h2 className="onboard-title">Death is not ready.</h2>
-        <p className="onboard-sub">
-          This reckoning needs its ledger before it can hold your account. Return once it is bound.
-        </p>
       </div>
     </div>
   )

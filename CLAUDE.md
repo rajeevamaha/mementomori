@@ -2,8 +2,9 @@
 
 > This file is auto-loaded by Claude Code. It's the single source of truth for a
 > new session picking this project up. Read it fully before editing.
-> Last updated: 2026-07-03 (accounts + serverless coach on Vercel; the
-> single-repo approach superseded the old two-repo plan).
+> Last updated: 2026-07-16 (local-only fallback when accounts are unavailable —
+> see §3; accounts + serverless coach on Vercel; the single-repo approach
+> superseded the old two-repo plan).
 
 ---
 
@@ -74,15 +75,19 @@ both locally (Express) and on Vercel (serverless functions in `api/`)**.
     Tables: mbd_users/state/convo/rate.
   - `server/index.mjs` — just the local Express wiring (port 8787).
   - `api/**/*.mjs` — Vercel functions re-exporting the same handlers.
-- **Accounts are REQUIRED (as of 2026-07-06):** the app is account-only — no
-  guest mode. `App.jsx` gates everything: boot splash → (no DB → "not ready"
-  notice) → `AuthScreen` (login/register, the first screen) → `Onboarding`
-  (new account, no profile yet) → `Shell`. So a DB is required in production;
-  without `POSTGRES_URL` the deployed app shows the "not ready" notice. On
-  sign-in, adopt the server copy (server wins if it has a profile, else the
-  device seeds the account), then push debounced to `/api/state`; the Death
-  dock conversation syncs to `/api/convo`. Sign-out clears the device and
-  returns to `AuthScreen` (account keeps its data on the server).
+- **Accounts, with a local-only fallback (updated 2026-07-16):** when the
+  server has a database + `AUTH_SECRET` (`accountsAvailable`), `App.jsx` gates
+  on the account: boot splash → `AuthScreen` (login/register, the first screen)
+  → `Onboarding` (new account, no profile yet) → `Shell`. **When accounts are
+  NOT available** (no `POSTGRES_URL`/`AUTH_SECRET`, e.g. an unprovisioned Vercel
+  deploy, or the local API being down) the app **degrades to LOCAL-ONLY mode**
+  instead of hard-blocking — boot → `Onboarding` → `Shell`, data in
+  localStorage, no server sync. (This replaced the old "Death is not ready"
+  setup notice, which used to hard-block a DB-less deploy; provisioning a DB
+  flips accounts back on with no code change.) On sign-in, adopt the server
+  copy (server wins if it has a profile, else the device seeds the account),
+  then push debounced to `/api/state`; the Death dock conversation syncs to
+  `/api/convo`. Sign-out clears the device and returns to `AuthScreen`.
 - **Local Postgres for testing:** `postgresql@16` is installed via Homebrew
   (`/opt/homebrew/opt/postgresql@16/bin`). To run the real pgStore locally:
   `initdb`, start with `LC_ALL=C` + a short `-k` socket dir (e.g. `/tmp/mbdpg`)
