@@ -100,6 +100,15 @@ export default function AccountPanel({ compact = false }) {
 
   return (
     <div className="account-panel">
+      {meta.google && (
+        <>
+          <a className="btn google-btn" href="/api/auth/google">
+            Continue with Google
+          </a>
+          <p className="muted small auth-or">or use email / username</p>
+        </>
+      )}
+
       <div className="auth-tabs">
         <button className={`mini ${mode === 'login' ? 'active' : ''}`} onClick={() => setMode('login')}>
           Sign in
@@ -138,12 +147,6 @@ export default function AccountPanel({ compact = false }) {
           {busy ? '…' : mode === 'register' ? 'Create account' : 'Sign in'}
         </button>
       </form>
-
-      {meta.google && (
-        <a className="btn google-btn" href="/api/auth/google">
-          Continue with Google
-        </a>
-      )}
 
       {error && <p className="account-error">⚠ {error}</p>}
       <p className="muted small">

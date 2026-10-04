@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { applyUserDataDefaults } from './lib/userDataKeys.js'
 
 // Single source of truth for the whole platform, persisted to localStorage.
 // Each module (goals, finance, family, legacy, reviews) hangs off this store.
@@ -295,21 +296,7 @@ export const useStore = create(
       // Replace local data with the account's server copy (login / cross-device).
       // Unlike importData this is not user-driven restore — it also clears keys
       // the server copy legitimately has empty.
-      applyServerState: (data) =>
-        set((s) => ({
-          profile: data.profile ?? null,
-          goals: data.goals ?? [],
-          finance: data.finance ?? { assets: [], liabilities: [], retirementTarget: 0 },
-          family: data.family ?? [],
-          insurance: data.insurance ?? { hasPolicy: null, policies: [] },
-          health: data.health ?? { conditions: [], items: {} },
-          will: data.will ?? { hasWill: null, location: '', executor: '', guardian: '', lastUpdated: '', checklist: {} },
-          legacy: data.legacy ?? [],
-          reviews: data.reviews ?? [],
-          events: data.events ?? [],
-          anniversaryAsked: data.anniversaryAsked ?? false,
-          tone: data.tone ?? s.tone,
-        })),
+      applyServerState: (data) => set((s) => applyUserDataDefaults(data, s)),
 
       // ---- backup import (tolerant: only overwrite keys present in the file) ----
       importData: (data) =>
@@ -325,6 +312,9 @@ export const useStore = create(
           reviews: data.reviews ?? s.reviews,
           events: data.events ?? s.events,
           tone: data.tone ?? s.tone,
+          view: data.view ?? s.view,
+          dockOpen: data.dockOpen ?? s.dockOpen,
+          images: data.images ?? s.images,
         })),
     }),
     {

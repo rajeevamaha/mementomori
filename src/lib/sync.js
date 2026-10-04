@@ -1,37 +1,16 @@
 // Account/session client + server sync for the Zustand store.
 //
-// Model: the app stays local-first (localStorage) exactly as before. When the
-// user signs in, their account's server copy becomes the source of truth —
-// it is pulled and adopted on login, and every local change while signed in is
-// pushed (debounced) to /api/state. First login from a device with existing
-// local data uploads that data instead (the server copy is empty).
+// Signed-in users: the full user snapshot (see userDataKeys.js) is stored in
+// Postgres (mbd_state JSONB); Death chat in mbd_convo. localStorage is a cache.
+// On login the server copy wins; every edit debounces to PUT /api/state.
 //
 // The session itself is an HttpOnly cookie — nothing secret lives in JS.
 
 import { useStore } from '../store.js'
-
-// Keys that travel with the account. Deliberately excludes per-device bits:
-// view/dockOpen (ephemeral UI) and images (device art overrides, can be MBs).
-const SYNC_KEYS = [
-  'profile',
-  'goals',
-  'finance',
-  'family',
-  'insurance',
-  'health',
-  'will',
-  'legacy',
-  'reviews',
-  'events',
-  'anniversaryAsked',
-  'tone',
-]
+import { pickUserData } from './userDataKeys.js'
 
 function snapshot() {
-  const s = useStore.getState()
-  const out = {}
-  for (const k of SYNC_KEYS) out[k] = s[k]
-  return out
+  return pickUserData(useStore.getState())
 }
 
 async function jsonFetch(url, opts = {}) {
@@ -142,11 +121,8 @@ async function adoptServerState() {
   }
 }
 
-// Keep only the SYNC_KEYS of an arbitrary state object (for comparison).
 function pick(obj) {
-  const out = {}
-  for (const k of SYNC_KEYS) out[k] = obj?.[k]
-  return out
+  return pickUserData(obj)
 }
 
 // Whether accounts are usable at all (server has storage) and whether the
@@ -159,14 +135,19 @@ export const getAccountMeta = () => accountMeta
 export async function initAccount() {
   try {
     const me = await jsonFetch('/api/auth/me')
-    accountMeta = { accountsAvailable: !!me.accountsAvailable, google: !!me.google }
+    accountMeta = {
+      accountsAvailable: !!me.accountsAvailable,
+      google: !!me.google,
+      setupRequired: !!me.setupRequired,
+      setup: me.setup || null,
+    }
     useStore.getState().setUser(me.user)
     if (me.user) await adoptServerState()
     return me
   } catch {
-    accountMeta = { accountsAvailable: false, google: false }
+    accountMeta = { accountsAvailable: false, google: false, setupRequired: false, setup: null }
     useStore.getState().setUser(null)
-    return { user: null, accountsAvailable: false, google: false }
+    return { user: null, accountsAvailable: false, google: false, setupRequired: false, setup: null }
   }
 }
 
