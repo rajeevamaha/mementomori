@@ -1,14 +1,9 @@
 // Persistence layer for user accounts, per-user app state, and Death's
-// conversation memory. Two backends behind one interface:
+// conversation memory. Backends (first match wins):
 //
-//   - Postgres  — used when POSTGRES_URL (or DATABASE_URL) is set. This is the
-//                 production path (Vercel → Storage → Postgres). Tables are
-//                 created on first use; `pg` is imported lazily so local dev
-//                 never touches it.
-//   - JSON files — local fallback under .data/ (gitignored). Zero setup, so
-//                 `npm run dev` gives working accounts out of the box. Not
-//                 usable on Vercel (serverless filesystems are ephemeral) —
-//                 endpoints report that clearly instead of silently losing data.
+//   - MongoDB Atlas — MONGODB_URI (good fit for JSON-shaped app state).
+//   - Postgres      — POSTGRES_URL or DATABASE_URL (Vercel Storage / Supabase).
+//   - JSON files    — local .data/ when no cloud DB (not on Vercel).
 //
 // Users: { id, login (unique, lowercased), name, passwordHash (null for
 // Google-only accounts), googleId (null for password accounts), createdAt }.
@@ -17,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mongoRateLimitCheck, mongoStore, mongoUri } from './store-mongo.mjs'
 
 const PG_URL = () => process.env.POSTGRES_URL || process.env.DATABASE_URL || ''
 const onVercel = () => !!process.env.VERCEL
@@ -58,6 +54,7 @@ async function pool() {
       );
       CREATE TABLE IF NOT EXISTS mbd_state (
         user_id TEXT PRIMARY KEY REFERENCES mbd_users(id) ON DELETE CASCADE,
+        -- Full app snapshot (profile, goals, finance, family, health, will, etc.)
         state JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
@@ -225,6 +222,7 @@ const fileStore = {
 // (accounts need durable storage — an ephemeral serverless FS would silently
 // drop users, which is worse than a clear error).
 export function getStore() {
+  if (mongoUri()) return mongoStore
   if (PG_URL()) return pgStore
   if (onVercel()) return null
   return fileStore
@@ -232,17 +230,44 @@ export function getStore() {
 
 export function storeUnavailableMessage() {
   return (
-    'Accounts need a database. On Vercel: create one under Storage → Postgres ' +
-    '(or Neon) and connect it to this project so POSTGRES_URL is set, then redeploy.'
+    'Accounts need a database. Set MONGODB_URI (MongoDB Atlas) or POSTGRES_URL ' +
+    '(Postgres / Supabase) in Vercel environment variables, then redeploy.'
   )
 }
 
-// True when a Postgres backend is configured (used by the rate limiter to pick
-// a cross-instance store vs. a per-instance in-memory fallback).
+export const hasMongo = () => !!mongoUri()
 export const hasPg = () => !!PG_URL()
+export const hasRemoteStore = () => hasMongo() || hasPg()
 
-// Run a raw parameterized query against the (table-initialized) pool. Only used
-// by the rate limiter for its atomic upsert. Throws if no Postgres is set.
+export function databaseKind() {
+  if (hasMongo()) return 'mongodb'
+  if (hasPg()) return 'postgres'
+  return null
+}
+
+// Cross-instance rate limit (Mongo or Postgres).
+export async function distributedRateCheck(bucket, limit, windowMs, now) {
+  if (hasMongo()) return mongoRateLimitCheck(bucket, limit, windowMs, now)
+  if (hasPg()) return pgRateLimitCheck(bucket, limit, windowMs, now)
+  throw new Error('distributedRateCheck called without a remote database')
+}
+
+async function pgRateLimitCheck(bucket, limit, windowMs, now) {
+  const resetAt = now + windowMs
+  const { rows } = await pgQuery(
+    `INSERT INTO mbd_rate (bucket, count, reset_at) VALUES ($1, 1, $2)
+     ON CONFLICT (bucket) DO UPDATE SET
+       count = CASE WHEN mbd_rate.reset_at < $3 THEN 1 ELSE mbd_rate.count + 1 END,
+       reset_at = CASE WHEN mbd_rate.reset_at < $3 THEN $2 ELSE mbd_rate.reset_at END
+     RETURNING count, reset_at`,
+    [bucket, resetAt, now]
+  )
+  const count = rows[0]?.count ?? 1
+  const storedReset = Number(rows[0]?.reset_at ?? resetAt)
+  return { allowed: count <= limit, remaining: Math.max(0, limit - count), resetAt: storedReset }
+}
+
+// Run a raw parameterized query against the (table-initialized) pool.
 export async function pgQuery(sql, params) {
   if (!PG_URL()) throw new Error('pgQuery called without POSTGRES_URL')
   return (await pool()).query(sql, params)

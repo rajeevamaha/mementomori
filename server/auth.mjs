@@ -258,18 +258,34 @@ async function logoutImpl(req, res) {
   res.status(200).json({ ok: true })
 }
 
+function deploySetupStatus() {
+  const store = getStore()
+  const hasAuth = !!authSecret()
+  const accountsAvailable = hasAuth && !!store
+  const onVercel = !!process.env.VERCEL
+  const setupRequired = onVercel && !accountsAvailable
+  return {
+    accountsAvailable,
+    setupRequired,
+    setup: setupRequired
+      ? { needsDatabase: !store, needsAuthSecret: !hasAuth }
+      : null,
+    google: !!(googleId() && googleSecret()),
+  }
+}
+
 // GET /api/auth/me
 async function meImpl(req, res) {
-  if (!authSecret() || !getStore()) {
-    // Not an error — the client uses this to decide whether to show account UI.
-    res.status(200).json({ user: null, accountsAvailable: false, google: !!(googleId() && googleSecret()) })
+  const status = deploySetupStatus()
+  if (!status.accountsAvailable) {
+    // Not an error — the client uses this to decide account UI vs local-only vs Vercel setup.
+    res.status(200).json({ user: null, ...status })
     return
   }
   const user = await getSessionUser(req)
   res.status(200).json({
     user: user ? publicUser(user) : null,
-    accountsAvailable: true,
-    google: !!(googleId() && googleSecret()),
+    ...status,
   })
 }
 
@@ -463,7 +479,7 @@ function safe(handler) {
       await handler(req, res)
     } catch (err) {
       // Unique-violation race (two simultaneous registers/links) -> friendly 409.
-      if (err?.code === '23505') {
+      if (err?.code === '23505' || err?.code === 11000) {
         if (!res.headersSent) res.status(409).json({ error: 'That username is already taken.' })
         return
       }

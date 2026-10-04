@@ -2306,7 +2306,8 @@ select.field-input {
   border-color: rgba(230, 57, 70, 0.45);
   color: var(--bone);
 }
-.google-btn { text-align: center; text-decoration: none; }
+.google-btn { text-align: center; text-decoration: none; width: 100%; }
+.auth-or { text-align: center; margin: 4px 0 8px; }
 .account-error { color: var(--ember); font-size: 0.85rem; margin: 0; }
 .account-flash { color: var(--bone); font-size: 0.85rem; margin: 0; }
 .account-signed { margin: 0; color: var(--bone); }
@@ -2329,4 +2330,24 @@ select.field-input {
   text-overflow: ellipsis;
 }
 .account-chip:hover { color: var(--bone); border-color: rgba(233, 230, 218, 0.3); }
+
+.deploy-setup-steps {
+  margin: 16px 0;
+  padding-left: 1.2rem;
+  color: var(--ash);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.deploy-setup-steps li { margin-bottom: 12px; }
+.deploy-setup-steps strong { color: var(--bone); }
+.inline-code {
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.82em;
+  color: var(--bone);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 2px;
+  word-break: break-all;
+}
+.deploy-setup .btn-primary { margin-top: 8px; align-self: flex-start; }
 
